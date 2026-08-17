@@ -20,9 +20,48 @@ export class FieldManager {
         this.enemyWalls = [];
         this.frame = [];
         this.gfx = scene.add.graphics();
-        this.gfx.setDepth(1);
+        this.gfx.setDepth(3);
+        this.colorLayers = [];
+        this.underScraps = [];
         this.edge = scene.add.graphics();
         this.edge.setDepth(2);
+        this.sheet = scene.add.graphics();
+        this.sheet.setDepth(0.4);
+        this.paper = null;
+        var b = this.bounds;
+        var cx = b.x + b.w / 2;
+        var cy = b.y + b.h / 2;
+        if (window.Paper && Paper.addScrap) {
+            this.underScraps.push(Paper.addScrap(scene, b.x + 36, b.y - 10, 210, 92, 0x47a798, 101, {
+                depth: 0.16, jag: 9, angle: -7, shadowX: 14, shadowY: 20, raw: true, fibers: 'light'
+            }));
+            this.underScraps.push(Paper.addScrap(scene, b.x + b.w - 28, b.y - 6, 190, 86, 0xd28e43, 102, {
+                depth: 0.18, jag: 9, angle: 8, shadowX: 14, shadowY: 20, raw: true, fibers: 'light'
+            }));
+            this.underScraps.push(Paper.addScrap(scene, b.x + 28, b.y + b.h + 8, 200, 88, 0x47a798, 103, {
+                depth: 0.16, jag: 9, angle: 8, shadowX: 14, shadowY: 20, raw: true, fibers: 'light'
+            }));
+            this.underScraps.push(Paper.addScrap(scene, b.x + b.w - 22, b.y + b.h + 10, 220, 96, 0xd28e43, 104, {
+                depth: 0.18, jag: 9, angle: -9, shadowX: 14, shadowY: 20, raw: true, fibers: 'light'
+            }));
+        }
+        if (window.Paper && Paper.drawScrap) {
+            Paper.drawScrap(
+                this.sheet,
+                cx,
+                cy,
+                b.w + 44,
+                b.h + 44,
+                0xe6d8c0,
+                77,
+                { jag: 11, shadowX: 22, shadowY: 30, fibers: 'light' }
+            );
+            this.paper = Paper.overlayFiber(scene, cx, cy, b.w + 44, b.h + 44, 77, {
+                depth: 0.5,
+                alpha: 0.22,
+                jag: 11
+            });
+        }
         this._buildFrame();
         this._loadPolygons(level.polygons);
         this.totalArea = this._sumColorArea();
@@ -574,26 +613,105 @@ export class FieldManager {
         });
     }
 
+    _ensureColorLayers() {
+        while (this.colorLayers.length < this.colors.length) {
+            this.colorLayers.push(this.scene.add.graphics());
+        }
+        while (this.colorLayers.length > this.colors.length) {
+            this.colorLayers.pop().destroy();
+        }
+    }
+
     draw() {
         this._needsDraw = false;
-        var g = this.gfx;
-        g.clear();
-        var b = this.bounds;
-        // Все пустоты имеют тот же цвет, что и область после среза игрока.
-        // У стены подрезчика нет собственной заливки: удалённый цвет просто
-        // открывает этот общий фон поля.
-        g.fillStyle(0x1a1f3d, 1);
-        g.fillRoundedRect(b.x - 6, b.y - 6, b.w + 12, b.h + 12, 18);
-        this._fillPolys(g, this.frame, 0x1a1f3d, 1);
-        this._fillPolys(g, this.claimed, 0x1a1f3d, 1);
-        for (var i = 0; i < this.colors.length; i++) {
-            var col = this.colors[i];
-            this._fillPolys(g, [col.points], hexToInt(this.palette[col.color] || 0x888888), 1);
+        this.gfx.clear();
+        this.edge.clear();
+        this._ensureColorLayers();
+        var order = [];
+        var i;
+        for (i = 0; i < this.colors.length; i++) {
+            var pts = this.colors[i].points;
+            var sx = 0;
+            var sy = 0;
+            var j;
+            for (j = 0; j < pts.length; j++) {
+                sx += pts[j].x;
+                sy += pts[j].y;
+            }
+            order.push({
+                i: i,
+                s: sx / pts.length + sy / pts.length
+            });
         }
-        var e = this.edge;
-        e.clear();
-        e.lineStyle(3, 0xffffff, 0.18);
-        e.strokeRoundedRect(b.x, b.y, b.w, b.h, 12);
+        order.sort(function (a, b) { return b.s - a.s; });
+        for (i = 0; i < order.length; i++) {
+            var col = this.colors[order[i].i];
+            var tint = hexToInt(this.palette[col.color] || 0x888888);
+            var g = this.colorLayers[i];
+            g.clear();
+            g.setDepth(3 + i * 0.25);
+            if (window.Paper && Paper.drawColorPiece) {
+                var seed = 0x9e3779b9;
+                var name = col.color || '';
+                var k;
+                for (k = 0; k < name.length; k++) {
+                    seed = Math.imul(seed ^ name.charCodeAt(k), 16777619) >>> 0;
+                }
+                Paper.drawColorPiece(g, col.points, tint, seed);
+            } else {
+                this._fillPolys(g, [col.points], tint, 1);
+            }
+        }
+        this._refreshColorGrain();
+    }
+
+    _ensureColorGrain() {
+        if (this.colorGrain) return;
+        var key = this.scene.textures.exists('paper-pulp') ? 'paper-pulp'
+            : (this.scene.textures.exists('paper-kraft') ? 'paper-kraft' : null);
+        if (!key) return;
+        var b = this.bounds;
+        this.colorGrain = this.scene.add.tileSprite(
+            b.x + b.w / 2,
+            b.y + b.h / 2,
+            b.w,
+            b.h,
+            key
+        );
+        this.colorGrain.setDepth(5);
+        if (key === 'paper-kraft') {
+            this.colorGrain.setBlendMode(Phaser.BlendModes.MULTIPLY);
+            this.colorGrain.setAlpha(0.32);
+        } else {
+            this.colorGrain.setBlendMode(Phaser.BlendModes.OVERLAY);
+            this.colorGrain.setAlpha(0.42);
+        }
+        this.grainMaskG = this.scene.make.graphics({ add: false });
+    }
+
+    _refreshColorGrain() {
+        this._ensureColorGrain();
+        if (!this.colorGrain || !this.grainMaskG) return;
+        this.grainMaskG.clear();
+        this.grainMaskG.fillStyle(0xffffff, 1);
+        var i;
+        for (i = 0; i < this.colors.length; i++) {
+            var p = this.colors[i].points;
+            if (!p || p.length < 3) continue;
+            this.grainMaskG.beginPath();
+            this.grainMaskG.moveTo(p[0].x, p[0].y);
+            var j;
+            for (j = 1; j < p.length; j++) this.grainMaskG.lineTo(p[j].x, p[j].y);
+            this.grainMaskG.closePath();
+            this.grainMaskG.fillPath();
+        }
+        if (this.colorGrain.mask) this.colorGrain.clearMask(true);
+        if (this.colors.length) {
+            this.colorGrain.setVisible(true);
+            this.colorGrain.setMask(this.grainMaskG.createGeometryMask());
+        } else {
+            this.colorGrain.setVisible(false);
+        }
     }
 
     _fillPolys(g, polys, color, alpha) {
@@ -609,9 +727,36 @@ export class FieldManager {
         }
     }
 
+    _strokePoly(g, p) {
+        if (!p || p.length < 3) return;
+        g.beginPath();
+        g.moveTo(p[0].x, p[0].y);
+        for (var j = 1; j < p.length; j++) g.lineTo(p[j].x, p[j].y);
+        g.closePath();
+        g.strokePath();
+    }
+
     destroy() {
         this.gfx.destroy();
         this.edge.destroy();
+        var i;
+        for (i = 0; i < this.colorLayers.length; i++) this.colorLayers[i].destroy();
+        this.colorLayers = [];
+        for (i = 0; i < this.underScraps.length; i++) {
+            if (this.underScraps[i] && this.underScraps[i].destroy) this.underScraps[i].destroy();
+        }
+        this.underScraps = [];
+        if (this.sheet && this.sheet.destroy) this.sheet.destroy();
+        if (this.paper && this.paper.destroy) this.paper.destroy();
+        if (this.colorGrain) {
+            if (this.colorGrain.mask) this.colorGrain.clearMask(true);
+            this.colorGrain.destroy();
+        }
+        if (this.grainMaskG && this.grainMaskG.destroy) this.grainMaskG.destroy();
+        this.sheet = null;
+        this.paper = null;
+        this.colorGrain = null;
+        this.grainMaskG = null;
     }
 }
 

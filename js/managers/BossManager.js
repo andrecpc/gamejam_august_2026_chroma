@@ -671,7 +671,7 @@ export class BossManager {
         if (!this.active || this.defeated || !player) return false;
         if (this.type === 'colorBoss' &&
             dist(player.x, player.y, this.x, this.y) <=
-            player.radius + this.radius - 6) {
+            player.hitRadius() + this.radius - 6) {
             return true;
         }
         if (!this.projectiles) return false;
@@ -680,7 +680,7 @@ export class BossManager {
             var bullet = children[i];
             if (!bullet.active || bullet.owner !== 'boss') continue;
             if (dist(player.x, player.y, bullet.x, bullet.y) <=
-                player.radius + bullet.radius) {
+                player.hitRadius() + bullet.radius) {
                 bullet.disable();
                 return true;
             }

@@ -1,4 +1,4 @@
-import { SkinManager } from '../managers/SkinManager.js?v=1.5.4';
+import { SkinManager } from '../managers/SkinManager.js?v=1.7.1';
 
 export class SkinSelectScene extends Phaser.Scene {
     constructor() {
@@ -14,13 +14,13 @@ export class SkinSelectScene extends Phaser.Scene {
             fontFamily: 'Arial, sans-serif',
             fontSize: '60px',
             fontStyle: 'bold',
-            color: '#ffffff'
+            color: '#f3ead8'
         }).setOrigin(0.5);
 
         this.add.text(W / 2, 170, 'первый скин свободный • остальные — за 10, 20 и 30 ур. кампании', {
             fontFamily: 'Arial, sans-serif',
             fontSize: '21px',
-            color: '#9aa4e0',
+            color: '#d7c4a8',
             align: 'center',
             wordWrap: { width: 640 }
         }).setOrigin(0.5);
@@ -39,7 +39,7 @@ export class SkinSelectScene extends Phaser.Scene {
         new UIButton(this, W / 2, H - 105, 'НАЗАД', function () {
             if (window.AudioManager) AudioManager.playBack();
             this.scene.start('Menu');
-        }.bind(this), { width: 320, color: 0xff5ca8 });
+        }.bind(this), { width: 320, color: 0xb95c6b });
     }
 
     _skinCard(x, y, skin) {
@@ -60,13 +60,13 @@ export class SkinSelectScene extends Phaser.Scene {
             fontFamily: 'Arial, sans-serif',
             fontSize: '30px',
             fontStyle: 'bold',
-            color: unlocked ? '#ffffff' : '#667092'
+            color: unlocked ? '#3d2a22' : '#6b5346'
         }).setOrigin(0.5));
 
         card.add(this.add.text(0, 61, skin.description, {
             fontFamily: 'Arial, sans-serif',
             fontSize: '17px',
-            color: unlocked ? '#b9c2ef' : '#596078',
+            color: unlocked ? '#6b5346' : '#8a7a68',
             align: 'center',
             wordWrap: { width: 245 }
         }).setOrigin(0.5));
@@ -110,13 +110,20 @@ export class SkinSelectScene extends Phaser.Scene {
     }
 
     _drawCard(g, unlocked, selected) {
-        g.fillStyle(0x000000, 0.25);
-        g.fillRoundedRect(-140, -129, 280, 270, 26);
-        g.fillStyle(unlocked ? 0x202653 : 0x171a31, 0.98);
-        g.fillRoundedRect(-140, -135, 280, 270, 26);
-        g.lineStyle(selected ? 5 : 2, selected ? 0x3ee6a0 : 0xffffff,
-            selected ? 0.9 : 0.12);
-        g.strokeRoundedRect(-140, -135, 280, 270, 26);
+        if (window.Paper && Paper.drawScrap) {
+            Paper.drawScrap(g, 0, 0, 280, 270, unlocked ? 0xe6d8c0 : 0x8a7e6c, 404, {
+                jag: 8, shadowY: 16, fibers: true
+            });
+            if (selected) {
+                g.lineStyle(5, 0x2aa384, 0.9);
+                g.strokeRoundedRect(-136, -131, 272, 262, 8);
+            }
+            return;
+        }
+        g.fillStyle(0x0c101c, 0.3);
+        g.fillRoundedRect(-140, -129, 280, 270, 16);
+        g.fillStyle(unlocked ? 0xe6d8c0 : 0x8a7e6c, 1);
+        g.fillRoundedRect(-140, -135, 280, 270, 16);
     }
 
     _preview(skin, x, y) {

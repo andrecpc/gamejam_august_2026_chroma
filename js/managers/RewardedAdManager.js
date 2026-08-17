@@ -5,7 +5,7 @@ var REWARDS = [
     { id: 'speedBooster', type: 'specificBooster', booster: 'speed', label: 'Ускорение на поле', color: 0xffd24a },
     { id: 'shieldBooster', type: 'specificBooster', booster: 'shield', label: 'Щит на поле', color: 0x55eaff },
     { id: 'slowEnemyBooster', type: 'specificBooster', booster: 'enemySlow', label: 'Заморозка врагов на поле', color: 0x7bc8ff },
-    { id: 'fillVial', type: 'fillVial', label: 'Заполнить случайную пробирку', color: 0x3ee6a0 }
+    { id: 'fillVial', type: 'fillVial', label: 'Заполнить случайную корзину', color: 0x3ee6a0 }
 ];
 
 export class RewardedAdManager {

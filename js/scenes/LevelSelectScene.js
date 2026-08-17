@@ -30,13 +30,13 @@
                 fontFamily: 'Arial, sans-serif',
                 fontSize: '56px',
                 fontStyle: 'bold',
-                color: '#ffffff'
+                color: '#f3ead8'
             }).setOrigin(0.5);
 
             this.add.text(W / 2, H * 0.08 + 52, meta.subtitle, {
                 fontFamily: 'Arial, sans-serif',
                 fontSize: '24px',
-                color: '#9aa4e0'
+                color: '#d7c4a8'
             }).setOrigin(0.5);
 
             var levels = this.cache.json.get('levels').levels.filter(function (level) {
@@ -44,12 +44,16 @@
             }).sort(function (a, b) { return a.id - b.id; });
 
             var qaEnabled = window.QAMode && QAMode.enabled;
+            if (this.packId === 'campaign' && !qaEnabled && !GameSettings.isCampaignUnlocked()) {
+                this.scene.start('Menu');
+                return;
+            }
             if (qaEnabled) {
                 this.add.text(W / 2, H * 0.16, 'QA MODE • прогресс не изменён', {
                     fontFamily: 'Arial, sans-serif',
                     fontSize: '20px',
                     fontStyle: 'bold',
-                    color: '#ffd24a'
+                    color: '#ffb14a'
                 }).setOrigin(0.5);
             }
 
@@ -79,7 +83,7 @@
             new UIButton(this, W / 2, H * 0.93, 'НАЗАД', function () {
                 if (window.AudioManager) AudioManager.playBack();
                 this.scene.start('Menu');
-            }.bind(this), { width: 320, color: 0xff5ca8 });
+            }.bind(this), { width: 320, color: 0xb95c6b });
         },
 
         _levelTile: function (x, y, size, level, unlocked) {
@@ -87,13 +91,19 @@
             var container = this.add.container(x, y);
 
             var bg = this.add.graphics();
-            var color = unlocked ? 0x4a5cff : 0x2a2e50;
-            if (this.packId === 'lab' && unlocked) color = 0xff8a3d;
-            if (this.packId === 'campaign' && unlocked) color = 0x2aa384;
-            bg.fillStyle(0x000000, 0.25);
-            bg.fillRoundedRect(-size / 2, -size / 2 + 5, size, size, 24);
-            bg.fillStyle(color, 1);
-            bg.fillRoundedRect(-size / 2, -size / 2, size, size, 24);
+            var color = unlocked ? 0x477ab4 : 0x475467;
+            if (this.packId === 'lab' && unlocked) color = 0xd28e43;
+            if (this.packId === 'campaign' && unlocked) color = 0x47a798;
+            if (window.Paper && Paper.drawScrap) {
+                Paper.drawScrap(bg, 0, 0, size, size, color, 200 + level.id, {
+                    jag: 6, shadowY: 14, fibers: true
+                });
+            } else {
+                bg.fillStyle(0x0c101c, 0.3);
+                bg.fillRoundedRect(-size / 2, -size / 2 + 5, size, size, 12);
+                bg.fillStyle(color, 1);
+                bg.fillRoundedRect(-size / 2, -size / 2, size, size, 12);
+            }
             container.add(bg);
 
             if (unlocked) {
@@ -101,13 +111,13 @@
                     fontFamily: 'Arial, sans-serif',
                     fontSize: size > 150 ? '48px' : (size > 120 ? '36px' : (size > 100 ? '28px' : '24px')),
                     fontStyle: 'bold',
-                    color: '#ffffff'
+                    color: '#f3ead8'
                 }).setOrigin(0.5);
                 container.add(num);
                 var name = this.add.text(0, 28, level.name || '', {
                     fontFamily: 'Arial, sans-serif',
                     fontSize: size > 110 ? '16px' : '13px',
-                    color: '#dfe4ff',
+                    color: '#f3ead8',
                     align: 'center',
                     wordWrap: { width: size - 16 }
                 }).setOrigin(0.5, 0);

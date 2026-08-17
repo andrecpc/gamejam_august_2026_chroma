@@ -14,13 +14,15 @@
     var defaults = {
         musicOn: true,
         sfxOn: true,
-        musicVolume: 0.5, // 0..1
-        sfxVolume: 0.7,   // 0..1
+        musicVolume: 0.9, // 0..1
+        sfxVolume: 0.5,   // 0..1
+        volumePreset: 2,
         hapticsOn: true,
         reducedMotion: false,
         maxUnlockedLevel: 1,
-        unlockedPacks: { training: 1, campaign: 1 },
+        unlockedPacks: { training: 1, campaign: 0 },
         completedPacks: { training: 0, campaign: 0 },
+        campaignUnlocked: false,
         seenTutorials: [],
         selectedSkin: 'spark'
     };
@@ -30,20 +32,38 @@
             var raw = localStorage.getItem(STORAGE_KEY);
             if (!raw) return Object.assign({}, defaults);
             var parsed = JSON.parse(raw);
-            // Подмешиваем дефолты — на случай если добавятся новые поля
-            return Object.assign({}, defaults, parsed);
+            var merged = Object.assign({}, defaults, parsed);
+            if (!Object.prototype.hasOwnProperty.call(parsed, 'campaignUnlocked')) {
+                var completed = parsed.completedPacks || {};
+                var unlocked = parsed.unlockedPacks || {};
+                merged.campaignUnlocked = (completed.training || 0) >= 7 ||
+                    (completed.campaign || 0) > 0 ||
+                    (unlocked.campaign || 0) > 1;
+            }
+            return merged;
         } catch (e) {
             return Object.assign({}, defaults);
         }
     }
 
     var state = load();
-    state.unlockedPacks = Object.assign({ training: 1, campaign: 1 }, state.unlockedPacks || {});
+    state.unlockedPacks = Object.assign({ training: 1, campaign: 0 }, state.unlockedPacks || {});
     state.completedPacks = Object.assign({ training: 0, campaign: 0 }, state.completedPacks || {});
-    if (!state.completedPacks.campaign && (state.unlockedPacks.campaign || 1) > 1) {
+    if (!state.completedPacks.campaign && (state.unlockedPacks.campaign || 0) > 1) {
         state.completedPacks.campaign = Math.max(0, (state.unlockedPacks.campaign || 1) - 1);
     }
+    if (state.campaignUnlocked && (state.unlockedPacks.campaign || 0) < 1) {
+        state.unlockedPacks.campaign = 1;
+    }
     if (!Array.isArray(state.seenTutorials)) state.seenTutorials = [];
+    if (!state.volumePreset || state.volumePreset < 2) {
+        state.musicVolume = 0.9;
+        state.sfxVolume = 0.5;
+        state.volumePreset = 2;
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) {}
+    }
 
     var GameSettings = {
         // Прочитать значение
@@ -68,7 +88,8 @@
         unlockedInPack: function (packId) {
             var packs = state.unlockedPacks || {};
             if (packId === 'lab') return 99;
-            return packs[packId] || 1;
+            if (packs[packId] == null) return packId === 'campaign' ? 0 : 1;
+            return packs[packId];
         },
         completedInPack: function (packId) {
             var packs = state.completedPacks || {};
@@ -94,10 +115,22 @@
             }
             this.save();
         },
+        isCampaignUnlocked: function () {
+            return !!state.campaignUnlocked;
+        },
+        unlockCampaign: function () {
+            state.campaignUnlocked = true;
+            if (!state.unlockedPacks) state.unlockedPacks = { training: 1, campaign: 1 };
+            if ((state.unlockedPacks.campaign || 0) < 1) {
+                state.unlockedPacks.campaign = 1;
+            }
+            this.save();
+        },
         resetProgress: function () {
             state.maxUnlockedLevel = 1;
-            state.unlockedPacks = { training: 1, campaign: 1 };
+            state.unlockedPacks = { training: 1, campaign: 0 };
             state.completedPacks = { training: 0, campaign: 0 };
+            state.campaignUnlocked = false;
             state.seenTutorials = [];
             state.selectedSkin = 'spark';
             this.save();

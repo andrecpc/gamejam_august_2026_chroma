@@ -19,13 +19,13 @@
             var W = this.scale.width;
             var H = this.scale.height;
 
-            this.cameras.main.setBackgroundColor('#0d1030');
+            this.cameras.main.setBackgroundColor('#0c254d');
 
             this.add.text(W / 2, H / 2 - 80, 'ЗАГРУЗКА', {
                 fontFamily: 'Arial, sans-serif',
                 fontSize: '40px',
                 fontStyle: 'bold',
-                color: '#ffffff'
+                color: '#f6efe4'
             }).setOrigin(0.5);
 
             // Рамка прогресс-бара
@@ -41,10 +41,12 @@
             // Реальный прогресс от загрузчика (сработает, когда появятся ассеты)
             this.load.on('progress', function (value) {
                 bar.clear();
-                bar.fillStyle(0x4a5cff, 1);
+                bar.fillStyle(0x477ab4, 1);
                 bar.fillRoundedRect(barX + 3, barY + 3, (barW - 6) * value, 20, 10);
             });
 
+            this.load.image('paper-desk', 'assets/paper/desk.png?v=1.7.2');
+            this.load.image('paper-kraft', 'assets/paper/kraft.png?v=1.7.1');
             this.load.json('levels', 'levels/levels.json?v=1.5.7');
 
             // Заглушка: имитируем короткую загрузку, чтобы бар не мигал
@@ -52,6 +54,7 @@
         },
 
         create: function () {
+            if (window.Paper) Paper.generate(this);
             var W = this.scale.width;
             var H = this.scale.height;
             var barW = W * 0.6;
@@ -68,7 +71,7 @@
                 onUpdate: function (tween) {
                     var v = tween.getValue();
                     bar.clear();
-                    bar.fillStyle(0x4a5cff, 1);
+                    bar.fillStyle(0x477ab4, 1);
                     bar.fillRoundedRect(barX + 3, barY + 3, (barW - 6) * v, 20, 10);
                 },
                 onComplete: function () {

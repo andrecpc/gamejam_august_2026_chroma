@@ -22,7 +22,7 @@
                 fontFamily: 'Arial, sans-serif',
                 fontSize: '64px',
                 fontStyle: 'bold',
-                color: '#ffffff'
+                color: '#f3ead8'
             }).setOrigin(0.5);
 
             var cx = W / 2;
@@ -84,14 +84,14 @@
             new UIButton(this, W / 2, H * 0.91, 'НАЗАД', function () {
                 if (window.AudioManager) AudioManager.playBack();
                 this.scene.start('Menu');
-            }.bind(this), { width: 320, color: 0x2ce6d0 });
+            }.bind(this), { width: 320, color: 0xb95c6b });
         },
 
         _label: function (x, y, text) {
             return this.add.text(x, y, text, {
                 fontFamily: 'Arial, sans-serif',
                 fontSize: '34px',
-                color: '#ffffff'
+                color: '#f3ead8'
             }).setOrigin(0, 0.5);
         },
 
@@ -109,7 +109,7 @@
 
             function redraw() {
                 bg.clear();
-                bg.fillStyle(state ? 0x2ce6d0 : 0x555a7a, 1);
+                bg.fillStyle(state ? 0x47a798 : 0x475467, 1);
                 bg.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2);
                 knob.x = state ? (w / 2 - 30) : (-w / 2 + 30);
             }

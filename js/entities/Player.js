@@ -1,5 +1,41 @@
 import { dist, polylineLength, trailHitsSelf } from '../utils/Geometry.js';
-import { SkinManager } from '../managers/SkinManager.js?v=1.5.4';
+import { SkinManager } from '../managers/SkinManager.js?v=1.7.1';
+
+function strokeDashedPolyline(g, pts, dash, gap, width, color, alpha) {
+    if (!pts || pts.length < 2) return;
+    var period = dash + gap;
+    var i;
+    g.lineStyle(width, color, alpha);
+    pts[0]._dash = 0;
+    for (i = 1; i < pts.length; i++) {
+        var x0 = pts[i - 1].x;
+        var y0 = pts[i - 1].y;
+        var x1 = pts[i].x;
+        var y1 = pts[i].y;
+        var dx = x1 - x0;
+        var dy = y1 - y0;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.5) continue;
+        var ux = dx / len;
+        var uy = dy / len;
+        var t = 0;
+        var acc = pts[i - 1]._dash || 0;
+        while (t < len) {
+            var inDash = (acc % period) < dash;
+            var slot = inDash ? dash - (acc % period) : gap - ((acc % period) - dash);
+            var step = Math.min(slot, len - t);
+            if (inDash && step > 0.4) {
+                g.beginPath();
+                g.moveTo(x0 + ux * t, y0 + uy * t);
+                g.lineTo(x0 + ux * (t + step), y0 + uy * (t + step));
+                g.strokePath();
+            }
+            t += step;
+            acc += step;
+        }
+        pts[i]._dash = acc;
+    }
+}
 
 export class Player {
     constructor(scene, x, y, cfg) {
@@ -9,6 +45,7 @@ export class Player {
         this.lastSafeX = x;
         this.lastSafeY = y;
         this.radius = 11;
+        this.hitR = 17;
         this.baseSpeed = (cfg && cfg.playerSpeed) || 210;
         this.speed = this.baseSpeed;
         this.trail = [];
@@ -19,10 +56,16 @@ export class Player {
         this.skin = SkinManager.selected();
         this.facing = -Math.PI / 2;
 
+        var isCircle = this.skin.shape === 'circle';
         this.glow = scene.add.circle(
-            x, y, this.skin.shape === 'wisp' ? 26 : 18, this.skin.glowColor, 0.18
+            x, y,
+            isCircle ? 20 : (this.skin.shape === 'wisp' ? 26 : 18),
+            isCircle ? 0x111111 : this.skin.glowColor,
+            isCircle ? 0.28 : 0.18
         );
-        this.glow.setBlendMode(Phaser.BlendModes.ADD);
+        if (!isCircle) {
+            this.glow.setBlendMode(Phaser.BlendModes.ADD);
+        }
         this.glow.setDepth(8);
         this.dot = this._createDot(scene, x, y);
         this.dot.setDepth(9);
@@ -63,14 +106,19 @@ export class Player {
             dot.setBlendMode(Phaser.BlendModes.ADD);
         } else {
             var alpha = this.skin.shape === 'ring' ? 0.3 : 1;
-            dot = scene.add.circle(x, y, r, this.skin.coreColor, alpha);
+            var visualR = this.skin.shape === 'circle' ? r + 3 : r;
+            dot = scene.add.circle(x, y, visualR, this.skin.coreColor, alpha);
             dot.setStrokeStyle(
-                this.skin.shape === 'ring' ? 5 : 3,
-                this.skin.strokeColor,
+                this.skin.shape === 'ring' ? 5 : (this.skin.shape === 'circle' ? 5 : 4),
+                this.skin.shape === 'circle' ? 0x111111 : this.skin.strokeColor,
                 1
             );
         }
         return dot;
+    }
+
+    hitRadius() {
+        return this.hitR || (this.radius + 6);
     }
 
     resetToSafe() {
@@ -263,39 +311,22 @@ export class Player {
         var g = this.trailGfx;
         g.clear();
         if (this.trail.length < 2) return;
-        var maxLen = 420;
-        var len = 0;
-        for (var i = 1; i < this.trail.length; i++) {
-            var dx = this.trail[i].x - this.trail[i - 1].x;
-            var dy = this.trail[i].y - this.trail[i - 1].y;
-            len += Math.sqrt(dx * dx + dy * dy);
-        }
-        var danger = Math.min(1, len / maxLen);
-        var pulse = 1 + Math.sin(this.scene.time.now / 90) * 0.35 * danger;
-        var color = Phaser.Display.Color.Interpolate.ColorWithColor(
-            Phaser.Display.Color.ValueToColor(this.skin.trailColor),
-            Phaser.Display.Color.ValueToColor(this.skin.dangerColor),
-            100,
-            Math.floor(danger * 100)
-        );
-        var c = Phaser.Display.Color.GetColor(color.r, color.g, color.b);
-        g.lineStyle((this.skin.trailWidth || 4) * pulse, c, 0.95);
-        g.beginPath();
-        g.moveTo(this.trail[0].x, this.trail[0].y);
-        for (var j = 1; j < this.trail.length; j++) {
-            g.lineTo(this.trail[j].x, this.trail[j].y);
-        }
-        g.strokePath();
+        strokeDashedPolyline(g, this.trail, 16, 10, 9, 0x1a120c, 0.7);
+        strokeDashedPolyline(g, this.trail, 16, 10, 6, 0xffffff, 1);
 
         if (this.flameIndex >= 0) {
             var fi = Math.min(this.trail.length - 1, Math.floor(this.flameIndex));
-            g.lineStyle(6, 0xffaa33, 1);
-            g.beginPath();
-            g.moveTo(this.trail[fi].x, this.trail[fi].y);
-            for (var k = fi + 1; k < this.trail.length; k++) {
-                g.lineTo(this.trail[k].x, this.trail[k].y);
+            var burning = this.trail.slice(fi);
+            if (burning.length >= 2) {
+                g.lineStyle(7, 0xffaa33, 1);
+                g.beginPath();
+                g.moveTo(burning[0].x, burning[0].y);
+                var k;
+                for (k = 1; k < burning.length; k++) {
+                    g.lineTo(burning[k].x, burning[k].y);
+                }
+                g.strokePath();
             }
-            g.strokePath();
         }
     }
 

@@ -5,9 +5,9 @@ var SKINS = [
         description: 'Яркая точка — с неё начинается путь',
         requiredWins: 0,
         shape: 'circle',
-        coreColor: 0xffffff,
-        strokeColor: 0xfff6c8,
-        glowColor: 0xffffff,
+        coreColor: 0xfff6ea,
+        strokeColor: 0x111111,
+        glowColor: 0x111111,
         trailColor: 0xffffff,
         dangerColor: 0xff2244,
         trailWidth: 4

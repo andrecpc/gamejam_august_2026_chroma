@@ -10,7 +10,7 @@ html, body {
     height: 100%;
     min-height: 100dvh;
     overflow: hidden;
-    background: #0d1030; /* цвет фона за канвасом (letterbox-полосы на широких экранах) */
+    background: #0c254d;
     /* Запрещаем выделение текста и системные жесты по долгому тапу на мобиле */
     -webkit-user-select: none;
     user-select: none;

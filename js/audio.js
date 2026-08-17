@@ -195,23 +195,72 @@
             osc.stop(t + dur + 0.03);
         },
 
-        playClick: function () { this._blip(520, 'square', 0.10, 0.25); },
+        _noiseBuffer: function () {
+            if (this._noise) return this._noise;
+            var sr = this.ctx.sampleRate;
+            var n = Math.floor(sr * 0.35);
+            var buf = this.ctx.createBuffer(1, n, sr);
+            var data = buf.getChannelData(0);
+            var i;
+            for (i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
+            this._noise = buf;
+            return buf;
+        },
+
+        _noiseBurst: function (time, dur, freq, q, vol) {
+            var src = this.ctx.createBufferSource();
+            src.buffer = this._noiseBuffer();
+            var filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = freq;
+            filter.Q.value = q == null ? 1.1 : q;
+            var g = this.ctx.createGain();
+            g.gain.setValueAtTime(0.0001, time);
+            g.gain.linearRampToValueAtTime(vol, time + 0.006);
+            g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+            src.connect(filter);
+            filter.connect(g);
+            g.connect(this.sfxGain);
+            src.start(time);
+            src.stop(time + dur + 0.02);
+        },
+
+        playClick: function () {
+            this._blip(midiToFreq(72), 'sine', 0.16, 0.055);
+            var self = this;
+            setTimeout(function () { self._blip(midiToFreq(76), 'triangle', 0.14, 0.035); }, 28);
+        },
         playHover: function () {
-            // Наведение мыши не считается пользовательским жестом. Не создаём
-            // AudioContext до первого pointerdown, чтобы Chrome не ругался.
             if (!this.ctx || this.ctx.state !== 'running') return;
-            this._blip(700, 'sine', 0.06, 0.12);
+            this._blip(midiToFreq(79), 'sine', 0.08, 0.04);
         },
         playSuccess: function () {
-            // Небольшой восходящий мотив
-            this._blip(523, 'triangle', 0.12, 0.25);
+            this._blip(523, 'triangle', 0.12, 0.18);
             var self = this;
-            setTimeout(function () { self._blip(784, 'triangle', 0.16, 0.25); }, 90);
+            setTimeout(function () { self._blip(784, 'triangle', 0.16, 0.18); }, 90);
         },
-        playBack: function () { this._blip(320, 'square', 0.10, 0.22); },
+        playWin: function () {
+            var self = this;
+            var notes = [60, 64, 67, 72, 79];
+            var i;
+            for (i = 0; i < notes.length; i++) {
+                (function (midi, delay) {
+                    setTimeout(function () {
+                        self._blip(midiToFreq(midi), 'triangle', 0.32, 0.16);
+                        self._blip(midiToFreq(midi + 12), 'sine', 0.36, 0.07);
+                    }, delay);
+                })(notes[i], i * 115);
+            }
+        },
+        playBack: function () { this._blip(midiToFreq(64), 'sine', 0.12, 0.07); },
         playCut: function () {
-            this._sweep(150, 760, 'sawtooth', 0.13, 0.16);
-            this._blip(980, 'triangle', 0.08, 0.13);
+            this._ensureContext();
+            if (!this.ctx) return;
+            var t = this.ctx.currentTime;
+            this._noiseBurst(t, 0.07, 1800, 0.8, 0.2);
+            this._noiseBurst(t + 0.03, 0.09, 1100, 1.0, 0.18);
+            this._noiseBurst(t + 0.06, 0.11, 640, 0.9, 0.16);
+            this._sweep(420, 160, 'triangle', 0.12, 0.05);
         },
         playPour: function () {
             this._sweep(310, 145, 'sine', 0.24, 0.2);
@@ -220,10 +269,15 @@
             setTimeout(function () { self._blip(520, 'sine', 0.06, 0.08); }, 125);
         },
         playPork: function () {
-            this._blip(140, 'square', 0.12, 0.35);
-            var self = this;
-            setTimeout(function () { self._blip(90, 'sawtooth', 0.16, 0.28); }, 40);
-            setTimeout(function () { self._blip(520, 'triangle', 0.10, 0.2); }, 90);
+            this.playRustle();
+        },
+        playRustle: function () {
+            this._ensureContext();
+            if (!this.ctx) return;
+            var t = this.ctx.currentTime;
+            this._noiseBurst(t, 0.045, 2400, 1.4, 0.16);
+            this._noiseBurst(t + 0.03, 0.05, 1500, 1.1, 0.14);
+            this._noiseBurst(t + 0.055, 0.06, 900, 0.9, 0.1);
         },
         playError: function () { this._blip(160, 'square', 0.14, 0.22); },
         playHit: function () {

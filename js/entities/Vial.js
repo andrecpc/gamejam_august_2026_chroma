@@ -1,7 +1,50 @@
 import { hexToInt } from '../utils/Geometry.js';
 
+var BALLS = [
+    { x: 0, y: 6, r: 16, over: false },
+    { x: -17, y: -6, r: 14, over: false },
+    { x: 16, y: -4, r: 14, over: false },
+    { x: -2, y: -18, r: 15, over: false },
+    { x: 15, y: -22, r: 13, over: false },
+    { x: -16, y: -26, r: 13, over: false },
+    { x: 2, y: -38, r: 14, over: true },
+    { x: -13, y: -46, r: 11, over: true },
+    { x: 14, y: -48, r: 11, over: true }
+];
+
+function trapPts(cx, cy, topW, botW, h) {
+    var top = cy - h / 2;
+    var bot = cy + h / 2;
+    return [
+        { x: cx - topW / 2, y: top },
+        { x: cx + topW / 2, y: top },
+        { x: cx + botW / 2, y: bot },
+        { x: cx - botW / 2, y: bot }
+    ];
+}
+
+function fillPts(g, pts) {
+    if (!pts.length) return;
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y);
+    var i;
+    for (i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    g.closePath();
+    g.fillPath();
+}
+
+function darkenLocal(color, k) {
+    var r = (color >> 16) & 255;
+    var g = (color >> 8) & 255;
+    var b = color & 255;
+    r = Math.round(r * (1 - k));
+    g = Math.round(g * (1 - k));
+    b = Math.round(b * (1 - k));
+    return (r << 16) | (g << 8) | b;
+}
+
 /**
- * Пробирка в UI: корпус + волна жидкости (синусоида по верхнему краю).
+ * Корзина из крафт-бумаги: внутрь летят скомканные шарики.
  */
 export class Vial {
     constructor(scene, x, y, colorName, palette) {
@@ -15,15 +58,15 @@ export class Vial {
         this.pulse = 0;
         this.visualScale = 1;
         this.remainingCount = 1;
-        this.w = 92;
-        this.h = 150;
+        this.busy = false;
+        this.w = 108;
+        this.h = 132;
         this.gfx = scene.add.graphics();
-        this.icon = scene.add.circle(x, y + 102, 16, this.color);
-        this.icon.setStrokeStyle(3, 0xffffff, 0.85);
-        this.label = scene.add.text(x, y + 128, colorName, {
+        this.icon = scene.add.circle(x, y, 1, this.color, 0);
+        this.label = scene.add.text(x, y + 78, colorName, {
             fontFamily: 'Arial, sans-serif',
             fontSize: '18px',
-            color: '#dfe4ff'
+            color: '#f6efe4'
         }).setOrigin(0.5, 0);
         this.time = 0;
     }
@@ -70,8 +113,11 @@ export class Vial {
         this.pulse = Math.max(0, this.pulse - dt * 2.8);
         var punch = 1 + Math.sin((1 - this.pulse) * Math.PI) * this.pulse * 0.09;
         this.visualScale = punch;
-        this.icon.setScale(punch);
         this.label.setScale(punch);
+        var key = (this.fill * 1000 | 0) + ':' + (this.visualScale * 200 | 0) + ':' +
+            ((this.gfx.alpha * 100) | 0) + ':' + this.colorName;
+        if (key === this._drawKey) return;
+        this._drawKey = key;
         this._draw();
     }
 
@@ -79,7 +125,7 @@ export class Vial {
         if (GameSettings.reducedMotion()) {
             this.visualScale = 1;
             this.gfx.setAlpha(1);
-            this.icon.setAlpha(1);
+            this.icon.setAlpha(0);
             this.label.setAlpha(1);
             return;
         }
@@ -95,7 +141,7 @@ export class Vial {
             ease: 'Back.easeOut'
         });
         this.scene.tweens.add({
-            targets: [this.gfx, this.icon, this.label],
+            targets: [this.gfx, this.label],
             alpha: 1,
             duration: 180,
             ease: 'Quad.easeOut'
@@ -105,73 +151,98 @@ export class Vial {
     _draw() {
         var g = this.gfx;
         g.clear();
-        var w = this.w * this.visualScale;
-        var h = this.h * this.visualScale;
-        var x = this.x - w / 2;
-        var y = this.y - h / 2;
+        var s = this.visualScale;
+        var w = this.w * s;
+        var h = this.h * s;
+        var x = this.x;
+        var y = this.y;
+        var seed = (Math.round(this.x) * 13 + Math.round(this.y) * 7) >>> 0;
+        var color = (window.Paper && Paper.craft) ? Paper.craft(this.color) : this.color;
+        var topW = w * 1.08;
+        var botW = w * 0.68;
+        var body = trapPts(x, y, topW, botW, h);
+        var deckle = trapPts(x, y, topW + 14 * s, botW + 12 * s, h + 10 * s);
+        var inner = trapPts(x, y + 6 * s, topW * 0.76, botW * 0.76, h * 0.7);
+        if (window.Paper && Paper.tearPoly) {
+            body = Paper.tearPoly(body, seed, 4);
+            deckle = Paper.tearPoly(deckle, seed + 3, 5);
+            inner = Paper.tearPoly(inner, seed + 5, 3);
+        }
 
-        g.fillStyle(0x000000, 0.28);
-        g.fillRoundedRect(x + 4, y + 6, w, h, 18);
+        g.fillStyle(0x061428, 0.16);
+        fillPts(g, body.map(function (p) { return { x: p.x + 14, y: p.y + 18 }; }));
+        g.fillStyle(0x061428, 0.42);
+        fillPts(g, body.map(function (p) { return { x: p.x + 8, y: p.y + 11 }; }));
+        g.fillStyle(0xf7f1e6, 1);
+        fillPts(g, deckle);
+        g.fillStyle(color, 1);
+        fillPts(g, body);
 
-        g.fillStyle(0x20264a, 0.95);
-        g.fillRoundedRect(x, y, w, h, 18);
-        g.lineStyle(3, 0xffffff, 0.22);
-        g.strokeRoundedRect(x, y, w, h, 18);
+        if (window.Paper && Paper.craft) {
+            g.fillStyle(darkenLocal(color, 0.12), 0.16);
+            g.fillEllipse(x - w * 0.08, y + h * 0.04, w * 0.42, h * 0.22);
+            g.fillStyle(0xf7f1e6, 0.12);
+            g.fillEllipse(x + w * 0.1, y - h * 0.12, w * 0.28, h * 0.14);
+        }
 
-        var pad = 8;
-        var ix = x + pad;
-        var iy = y + pad;
-        var iw = w - pad * 2;
-        var ih = h - pad * 2;
-        var level = ih * this.fill;
-        if (level > 2) {
-            var top = iy + ih - level;
-            g.fillStyle(this.color, 0.92);
-            g.beginPath();
-            var steps = 14;
-            for (var i = 0; i <= steps; i++) {
-                var px = ix + iw * (i / steps);
-                var wave = Math.sin(i * 0.9 + this.time * 7) * (3.5 + this.fill * 2);
-                var py = top + wave;
-                if (i === 0) g.moveTo(px, py);
-                else g.lineTo(px, py);
+        g.fillStyle(0x2a241c, 0.86);
+        fillPts(g, inner);
+
+        var n = this.fill * BALLS.length;
+        var i;
+        var pass;
+        for (pass = 0; pass < 2; pass++) {
+            if (pass === 1) {
+                var lip = trapPts(x, y + h * 0.34, topW * 0.98, botW * 0.94, h * 0.36);
+                if (window.Paper && Paper.tearPoly) lip = Paper.tearPoly(lip, seed + 9, 3);
+                g.fillStyle(darkenLocal(color, 0.18), 1);
+                fillPts(g, lip);
+                g.fillStyle(0x3d3428, 0.18);
+                g.fillRect(x - botW * 0.22, y + h * 0.16, botW * 0.12, h * 0.28);
             }
-            g.lineTo(ix + iw, iy + ih);
-            g.lineTo(ix, iy + ih);
-            g.closePath();
-            g.fillPath();
-
-            g.fillStyle(0xffffff, 0.18);
-            g.fillEllipse(ix + iw * 0.35, top + 10, iw * 0.35, 8);
-
-            for (var bubble = 0; bubble < 3; bubble++) {
-                var travel = (this.time * (0.22 + bubble * 0.06) + bubble * 0.31) % 1;
-                var bubbleY = iy + ih - Math.min(level - 5, travel * Math.max(8, level - 6));
-                var bubbleX = ix + iw * (0.25 + bubble * 0.24) +
-                    Math.sin(this.time * 2.3 + bubble * 1.8) * 4;
-                if (bubbleY > top + 5) {
-                    g.fillStyle(0xffffff, 0.22);
-                    g.fillCircle(bubbleX, bubbleY, 2 + bubble);
+            for (i = 0; i < BALLS.length; i++) {
+                var p = BALLS[i];
+                if (!!p.over !== (pass === 1)) continue;
+                var vis = Phaser.Math.Clamp(n - i, 0, 1);
+                if (vis <= 0.04) continue;
+                if (window.Paper && Paper.drawCrumple) {
+                    Paper.drawCrumple(
+                        g,
+                        x + p.x * s,
+                        y + p.y * s,
+                        p.r * s * (0.55 + vis * 0.45),
+                        this.color,
+                        seed + i * 17
+                    );
+                } else {
+                    g.fillStyle(this.color, vis);
+                    g.fillCircle(x + p.x * s, y + p.y * s, p.r * s * vis);
                 }
             }
         }
-
-        g.fillStyle(0xffffff, 0.12);
-        g.fillRoundedRect(x + 8, y + 10, 14, h - 24, 8);
     }
 
     explode(onDone) {
         var self = this;
+        var duration = GameSettings.reducedMotion() ? 200 : 860;
+        this.scene.tweens.killTweensOf(this);
+        this.scene.tweens.killTweensOf([this.gfx, this.icon, this.label]);
         this.scene.tweens.add({
-            targets: [this.gfx, this.icon, this.label],
-            scale: 1.25,
+            targets: this,
+            visualScale: 0.74,
+            duration: duration,
+            ease: 'Cubic.easeIn'
+        });
+        this.scene.tweens.add({
+            targets: [this.gfx, this.label],
             alpha: 0,
-            duration: 220,
-            ease: 'Back.easeIn',
+            duration: duration,
+            ease: 'Sine.easeIn',
             onComplete: function () {
-                self.gfx.setScale(1).setAlpha(1);
-                self.icon.setScale(1).setAlpha(1);
-                self.label.setScale(1).setAlpha(1);
+                self.visualScale = 1;
+                self.gfx.setScale(1).setAlpha(0);
+                self.icon.setScale(1).setAlpha(0);
+                self.label.setScale(1).setAlpha(0);
                 if (onDone) onDone();
             }
         });

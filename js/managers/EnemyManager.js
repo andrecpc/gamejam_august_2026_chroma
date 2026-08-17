@@ -113,7 +113,7 @@ export class EnemyManager {
             pointToSegmentDist(
                 player.x, player.y,
                 enemy.x, enemy.y, ex, ey
-            ) <= player.radius + width / 2) {
+            ) <= player.hitRadius() + width / 2) {
             this.laserHitsPlayer = true;
         }
     }
@@ -186,7 +186,7 @@ export class EnemyManager {
             var bullet = children[i];
             if (!bullet.active) continue;
             if (dist(player.x, player.y, bullet.x, bullet.y) <=
-                player.radius + bullet.radius) {
+                player.hitRadius() + bullet.radius) {
                 bullet.disable();
                 return true;
             }

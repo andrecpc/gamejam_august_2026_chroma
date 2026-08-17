@@ -1,13 +1,13 @@
-import { Player } from '../entities/Player.js?v=1.5.4';
-import { FieldManager } from '../managers/FieldManager.js?v=1.5.3';
+import { Player } from '../entities/Player.js?v=1.7.5';
+import { FieldManager } from '../managers/FieldManager.js?v=1.7.1';
 import { VialManager } from '../managers/VialManager.js?v=1.5.5';
 import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
 import { MagneticManager } from '../managers/MagneticManager.js';
 import { BoosterManager } from '../managers/BoosterManager.js?v=1.5.1';
-import { EnemyManager } from '../managers/EnemyManager.js?v=1.5.3';
-import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.5.4';
-import { BossManager } from '../managers/BossManager.js?v=1.5.7';
-import { RewardedAdManager } from '../managers/RewardedAdManager.js?v=1.0.0';
+import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.5';
+import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.7.5';
+import { BossManager } from '../managers/BossManager.js?v=1.7.5';
+import { RewardedAdManager } from '../managers/RewardedAdManager.js?v=1.6.8';
 import { dist, hexToInt, pointHitsPolyline, polyCentroid } from '../utils/Geometry.js';
 
 var COLOR_NAMES = {
@@ -20,15 +20,6 @@ var COLOR_NAMES = {
     cyan: 'голубой',
     pink: 'розовый'
 };
-
-function packHudLabel(packId, levelId) {
-    var prefix = {
-        training: 'Обуч. ',
-        lab: 'Лаб. ',
-        campaign: 'Ур. '
-    }[packId] || '';
-    return prefix + levelId;
-}
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -48,6 +39,8 @@ export class GameScene extends Phaser.Scene {
         this._firedTutorials = {};
         this._tutorialMoveSent = false;
         this._wasDrawing = false;
+        this._pendingWin = false;
+        this.loseKind = null;
     }
 
     create() {
@@ -78,10 +71,13 @@ export class GameScene extends Phaser.Scene {
         this.boosters = new BoosterManager(this, this.level);
         this.rewards = new RewardedAdManager(this);
 
-        this.confetti = this.add.group({ maxSize: 64, runChildUpdate: true });
+        this.confetti = this.add.group({ maxSize: 180, runChildUpdate: true });
         this._bindInput();
 
         this.scene.launch('UI', { pack: this.packId, level: this.levelId });
+        this.floatLayer = this.add.container(0, 0);
+        this.floatLayer.setDepth(25);
+        this.game.events.on('game:baskets-idle', this._onBasketsIdle, this);
         this.time.delayedCall(0, function () {
             self.game.events.emit('game:ready', {
                 lives: self.lives,
@@ -108,26 +104,10 @@ export class GameScene extends Phaser.Scene {
         });
         this.events.once('shutdown', this._onShutdown, this);
         this.events.once('destroy', this._onShutdown, this);
-
-        this.stickGfx = this.add.graphics();
-        this.stickGfx.setDepth(20);
-        this.floatLayer = this.add.container(0, 0);
-        this.floatLayer.setDepth(25);
-
-        this.add.text(40, 36, packHudLabel(this.packId, this.levelId), {
-            fontFamily: 'Arial, sans-serif', fontSize: '28px', color: '#9aa4e0'
-        });
-        if (window.QAMode && QAMode.enabled) {
-            this.add.text(130, 42, 'QA', {
-                fontFamily: 'Arial, sans-serif',
-                fontSize: '18px',
-                fontStyle: 'bold',
-                color: '#ffd24a'
-            });
-        }
     }
 
     _onShutdown() {
+        this.game.events.off('game:baskets-idle', this._onBasketsIdle, this);
         if (this.scene.isActive('UI') || this.scene.isSleeping('UI')) {
             this.scene.stop('UI');
         }
@@ -152,7 +132,6 @@ export class GameScene extends Phaser.Scene {
         if (this.input) this.input.removeAllListeners();
         if (this.tweens) this.tweens.killAll();
         if (this.time) this.time.removeAllEvents();
-        this.endOverlay = null;
         this.enemies = [];
     }
 
@@ -160,8 +139,10 @@ export class GameScene extends Phaser.Scene {
         var self = this;
         this.input.on('pointerdown', function (p) {
             if (self.gameOver) return;
-            var b = self.field.bounds;
-            if (p.y < b.y - 10 || p.y > b.y + b.h + 20) return;
+            var W = self.scale.width;
+            var H = self.scale.height;
+            if (p.x > W - 120 && p.y < 120) return;
+            if (p.x > W - 185 && p.y > H - 120) return;
             self.stick.active = true;
             self.stick.ox = p.x;
             self.stick.oy = p.y;
@@ -185,13 +166,13 @@ export class GameScene extends Phaser.Scene {
             self.stick.active = false;
             self.dir.x = 0;
             self.dir.y = 0;
-            self.stickGfx.clear();
+            if (self._stickGfx() ) self._stickGfx().clear();
         });
         this.input.on('pointerupoutside', function () {
             self.stick.active = false;
             self.dir.x = 0;
             self.dir.y = 0;
-            self.stickGfx.clear();
+            if (self._stickGfx()) self._stickGfx().clear();
         });
     }
 
@@ -243,37 +224,53 @@ export class GameScene extends Phaser.Scene {
         this._drawStick();
     }
 
+    _stickGfx() {
+        var ui = this.scene.get('UI');
+        var g = ui && ui.stickGfx;
+        return (g && g.scene) ? g : null;
+    }
+
     _drawStick() {
-        var g = this.stickGfx;
+        var g = this._stickGfx();
+        if (!g) return;
         g.clear();
         if (!this.stick.active) return;
-        g.fillStyle(0xffffff, 0.12);
-        g.fillCircle(this.stick.ox, this.stick.oy, 54);
-        g.lineStyle(3, 0xffffff, 0.35);
-        g.strokeCircle(this.stick.ox, this.stick.oy, 54);
-        g.fillStyle(0xffffff, 0.55);
-        g.fillCircle(
-            this.stick.ox + this.dir.x * 48,
-            this.stick.oy + this.dir.y * 48,
-            22
-        );
+        var x = this.stick.ox;
+        var y = this.stick.oy;
+        g.fillStyle(0x061428, 0.38);
+        g.fillCircle(x + 5, y + 7, 58);
+        g.fillStyle(0xf3ead8, 0.22);
+        g.fillCircle(x, y, 56);
+        g.lineStyle(5, 0x111111, 0.85);
+        g.strokeCircle(x, y, 54);
+        g.lineStyle(3, 0xf7f1e6, 0.95);
+        g.strokeCircle(x, y, 50);
+        var kx = x + this.dir.x * 48;
+        var ky = y + this.dir.y * 48;
+        g.fillStyle(0x061428, 0.4);
+        g.fillCircle(kx + 3, ky + 4, 24);
+        g.fillStyle(0xf3ead8, 1);
+        g.fillCircle(kx, ky, 22);
+        g.lineStyle(4, 0x111111, 1);
+        g.strokeCircle(kx, ky, 22);
     }
 
     _collideEnemies() {
-        if (this.time.now < this.invulnUntil) return;
         var p = this.player;
+        if (!p) return;
+        var hitR = p.hitRadius ? p.hitRadius() : (p.radius + 6);
         for (var i = 0; i < this.enemies.length; i++) {
             var e = this.enemies[i];
             if (!e.active) continue;
-            if (dist(p.x, p.y, e.x, e.y) < p.radius + e.r) {
+            if (dist(p.x, p.y, e.x, e.y) <= hitR + e.r) {
                 this._hurt('враг');
                 return;
             }
             if (p.drawing) {
-                var hit = pointHitsPolyline(e.x, e.y, p.trail, e.r + 3);
+                var hit = pointHitsPolyline(e.x, e.y, p.trail, e.r + 4);
                 if (hit >= 0) {
-                    p.igniteTrail(hit);
-                    if (window.AudioManager && AudioManager.playZap) AudioManager.playZap();
+                    this._hurt('враг');
+                    return;
                 }
             }
         }
@@ -336,26 +333,20 @@ export class GameScene extends Phaser.Scene {
             }
             anyAccept = true;
             acceptedByColor[piece.color] = Math.min(1, result.acceptedArea / piece.area);
-            var fillEvent = result.events.find(function (event) {
-                return event.type === 'fill';
-            });
-            self._flyDrops(
-                piece,
-                result.acceptedArea,
-                fillEvent ? fillEvent.vial.id : null
-            );
             result.events.forEach(function (ev) {
-                self.game.events.emit('game:vial-' + ev.type, {
-                    vial: { id: ev.vial.id, color: ev.vial.color, fill: ev.vial.fill }
-                });
-                if (ev.type === 'pop') {
-                    if (self.bossManager) {
-                        self.bossManager.onVialCompleted(ev.vial.color);
-                    }
-                    self._confetti(self.player.x, self.player.y);
-                    if (window.AudioManager && AudioManager.playPork) AudioManager.playPork();
-                } else if (window.AudioManager && AudioManager.playPour) {
-                    AudioManager.playPour();
+                if (ev.type === 'fill') {
+                    var popped = result.events.some(function (p) {
+                        return p.type === 'pop' && p.vial.id === ev.vial.id;
+                    });
+                    self.game.events.emit('game:basket-lock', { vialId: ev.vial.id });
+                    self._flyDrops(piece, ev.amount, ev.vial.id, {
+                        fill: ev.vial.fill,
+                        popped: popped,
+                        color: piece.color
+                    });
+                }
+                if (ev.type === 'pop' && self.bossManager) {
+                    self.bossManager.onVialCompleted(ev.vial.color);
                 }
             });
         });
@@ -377,7 +368,7 @@ export class GameScene extends Phaser.Scene {
                     ': ещё ×' + count
                 );
             } else {
-                this._floatText(this.player.x, this.player.y - 28, 'Нет свободной пробирки!');
+                this._floatText(this.player.x, this.player.y - 28, 'Нет свободной корзины!');
             }
             return;
         }
@@ -430,7 +421,7 @@ export class GameScene extends Phaser.Scene {
             this._floatText(
                 this.player.x,
                 this.player.y - 28,
-                'Этот цвет нужен будущим пробиркам'
+                'Этот цвет нужен будущим корзинам'
             );
         }
 
@@ -449,53 +440,88 @@ export class GameScene extends Phaser.Scene {
             if (window.AudioManager && AudioManager.playError) AudioManager.playError();
             return;
         }
-        this._floatText(this.player.x, this.player.y - 28, 'Нет свободной пробирки!');
+        this._floatText(this.player.x, this.player.y - 28, 'Нет свободной корзины!');
         if (window.AudioManager && AudioManager.playError) AudioManager.playError();
     }
 
-    _flyDrops(piece, area, vialId) {
+    _flyDrops(piece, area, vialId, payload) {
+        payload = payload || {};
         var self = this;
-        var from = polyCentroid(piece.polys[0]);
-        var color = hexToInt(this.level.palette[piece.color]);
-        var drop = this.add.circle(from.x, from.y, Math.min(22, 8 + Math.sqrt(area) * 0.08), color, 0.9);
-        drop.setDepth(18);
-        var target = { x: this.scale.width / 2, y: this.scale.height - 210 };
+        var from = payload.from
+            || (piece && piece.polys && piece.polys[0] && polyCentroid(piece.polys[0]))
+            || { x: this.scale.width / 2, y: this.scale.height * 0.45 };
+        var color = hexToInt(
+            (this.level.palette && this.level.palette[payload.color]) || 0x4a8adf
+        );
+        var r = Math.min(22, 8 + Math.sqrt(area || 400) * 0.08);
+        var target = { x: this.scale.width / 2, y: this.scale.height - 248 };
         var ui = this.scene.get('UI');
         if (ui && ui.getVialTarget) {
             target = ui.getVialTarget(vialId) || target;
         }
+        var arrive = function () {
+            self.game.events.emit('game:basket-arrive', {
+                vialId: vialId,
+                color: payload.color,
+                fill: payload.fill,
+                popped: payload.popped,
+                x: target.x,
+                y: target.y
+            });
+        };
+        if (GameSettings.reducedMotion()) {
+            arrive();
+            return;
+        }
+        var drop = this.add.graphics().setDepth(18);
+        drop.x = from.x;
+        drop.y = from.y;
+        if (window.Paper && Paper.drawCrumple) {
+            Paper.drawCrumple(drop, 0, 0, r, color, Math.round(from.x * 13 + from.y * 7) >>> 0);
+        } else {
+            drop.fillStyle(color, 0.9);
+            drop.fillCircle(0, 0, r);
+        }
+        var fly = function () {
+            self.tweens.add({
+                targets: drop,
+                x: target.x + Phaser.Math.Between(-10, 10),
+                y: target.y,
+                scale: 0.45,
+                duration: 420,
+                ease: 'Cubic.easeIn',
+                onComplete: function () {
+                    drop.destroy();
+                    arrive();
+                }
+            });
+        };
         this.tweens.add({
             targets: drop,
-            x: target.x + Phaser.Math.Between(-18, 18),
-            y: target.y,
-            scale: 0.4,
-            duration: 420,
-            ease: 'Cubic.easeIn',
-            onComplete: function () {
-                drop.destroy();
-                self.game.events.emit('game:splash', {
-                    color: piece.color,
-                    vialId: vialId,
-                    x: target.x,
-                    y: target.y
-                });
-            }
+            scaleX: 1.28,
+            scaleY: 0.62,
+            duration: 90,
+            yoyo: true,
+            ease: 'Quad.easeIn',
+            onComplete: fly
         });
     }
 
-    _confetti(x, y) {
-        for (var i = 0; i < 14; i++) {
-            var bit = this.add.rectangle(x, y, 8, 14, Phaser.Utils.Array.GetRandom([
-                0xff4d6d, 0x4a9fff, 0xffd24a, 0x3ee6a0, 0xffffff
-            ])).setDepth(19);
-            this.confetti.add(bit);
+    _confetti(x, y, count) {
+        var host = this;
+        var ui = this.scene.get('UI');
+        if (ui && ui.add) host = ui;
+        var total = count || 14;
+        var colors = [0xde3449, 0x1f7fd7, 0xf0c107, 0x47a798, 0xd28e43, 0xf3ead8, 0x8960a0];
+        for (var i = 0; i < total; i++) {
+            var bit = host.add.rectangle(x, y, Phaser.Math.Between(7, 12), Phaser.Math.Between(12, 20), Phaser.Utils.Array.GetRandom(colors)).setDepth(205);
             this.tweens.add({
                 targets: bit,
-                x: x + Phaser.Math.Between(-90, 90),
-                y: y + Phaser.Math.Between(40, 140),
+                x: x + Phaser.Math.Between(-140, 140),
+                y: y + Phaser.Math.Between(50, 220),
                 angle: Phaser.Math.Between(0, 360),
                 alpha: 0,
-                duration: 500,
+                duration: Phaser.Math.Between(700, 1100),
                 onComplete: function (tw, tgt) { tgt[0].destroy(); }
             });
         }
@@ -578,17 +604,28 @@ export class GameScene extends Phaser.Scene {
     }
 
     _floatText(x, y, msg) {
-        var t = this.add.text(x, y, msg, {
+        var ui = this.scene.get('UI');
+        var host = (ui && ui.add && ui.scene) ? ui : this;
+        var W = this.scale.width;
+        var H = this.scale.height;
+        var t = host.add.text(0, 0, msg, {
             fontFamily: 'Arial, sans-serif',
             fontSize: '22px',
             fontStyle: 'bold',
             color: '#ffd24a',
             stroke: '#000000',
             strokeThickness: 4
-        }).setOrigin(0.5).setDepth(30);
-        this.tweens.add({
+        }).setOrigin(0.5).setDepth(95);
+        var pad = 28;
+        var hw = Math.max(36, t.width / 2);
+        var hh = Math.max(14, t.height / 2);
+        var tx = Phaser.Math.Clamp(x, pad + hw, W - pad - hw);
+        var ty = Phaser.Math.Clamp(y, pad + hh, H - pad - hh);
+        var endY = Phaser.Math.Clamp(ty - 36, pad + hh, H - pad - hh);
+        t.setPosition(tx, ty);
+        host.tweens.add({
             targets: t,
-            y: y - 36,
+            y: endY,
             duration: 280,
             ease: 'Quad.easeOut',
             onComplete: function () {
@@ -733,24 +770,26 @@ export class GameScene extends Phaser.Scene {
     _rewardFillVial() {
         var result = this.vials.completeRandomDisplayed();
         if (!result) return;
+        var vial = result.vial;
         var self = this;
-        result.events.forEach(function (event) {
-            self.game.events.emit('game:vial-' + event.type, {
-                vial: {
-                    id: event.vial.id,
-                    color: event.vial.color,
-                    fill: event.vial.fill
-                }
+        if (this.bossManager) {
+            result.events.forEach(function (event) {
+                if (event.type === 'pop') self.bossManager.onVialCompleted(event.vial.color);
             });
-            if (event.type === 'pop') {
-                if (self.bossManager) {
-                    self.bossManager.onVialCompleted(event.vial.color);
-                }
-                self._confetti(self.player.x, self.player.y);
-            }
+        }
+        this.game.events.emit('game:basket-lock', { vialId: vial.id });
+        var ui = this.scene.get('UI');
+        var target = (ui && ui.getVialTarget && ui.getVialTarget(vial.id)) || {
+            x: this.scale.width / 2,
+            y: this.scale.height - 248
+        };
+        this._flyDrops(null, this.field.vialCapacity, vial.id, {
+            fill: 1,
+            popped: true,
+            color: vial.color,
+            from: { x: target.x, y: target.y - 90 }
         });
         this.game.events.emit('game:vials-changed', this.vials.snapshot());
-        if (window.AudioManager) AudioManager.playPork();
         if (this.objectives) {
             this._handleObjectiveResult(this.objectives.evaluateNow());
         }
@@ -818,15 +857,14 @@ export class GameScene extends Phaser.Scene {
             GameSettings.completeLevel(this.levelId, this.packId);
             if (this._isTrainingComplete()) {
                 GameSettings.unlockLevel(1, 'campaign');
+                GameSettings.unlockCampaign();
             }
         }
-        if (window.AudioManager) AudioManager.playSuccess();
-        GameSettings.vibrate([18, 35, 18, 35, 45]);
-        if (!GameSettings.reducedMotion()) {
-            this.cameras.main.flash(260, 160, 255, 220, true);
-            this._confetti(this.scale.width * 0.35, this.scale.height * 0.35);
-            this._confetti(this.scale.width * 0.65, this.scale.height * 0.42);
+        if (window.AudioManager) {
+            if (AudioManager.playWin) AudioManager.playWin();
+            else AudioManager.playSuccess();
         }
+        GameSettings.vibrate([18, 35, 18, 35, 45]);
         this.game.events.emit('game:over', { win: true, level: this.levelId });
         if (this._isTrainingComplete()) {
             this._overlay('ОБУЧЕНИЕ ПРОЙДЕНО', true, {
@@ -836,6 +874,17 @@ export class GameScene extends Phaser.Scene {
         } else {
             this._overlay('УРОВЕНЬ ПРОЙДЕН', true);
         }
+        if (!GameSettings.reducedMotion()) {
+            this.cameras.main.flash(260, 160, 255, 220, true);
+            var W = this.scale.width;
+            var H = this.scale.height;
+            this._confetti(W * 0.5, H * 0.3, 32);
+            this._confetti(W * 0.22, H * 0.36, 26);
+            this._confetti(W * 0.78, H * 0.36, 26);
+            this._confetti(W * 0.38, H * 0.24, 20);
+            this._confetti(W * 0.62, H * 0.24, 20);
+            this._confetti(W * 0.5, H * 0.48, 18);
+        }
     }
 
     _isTrainingComplete() {
@@ -843,165 +892,102 @@ export class GameScene extends Phaser.Scene {
             this.levelId >= LevelManager.count(this, 'training');
     }
 
+    _needsBasketWinWait() {
+        var wc = this.objectives && this.objectives.winCondition;
+        if (wc && wc !== 'vials' && wc !== 'all') return false;
+        var ui = this.scene.get('UI');
+        return !!(ui && ui.hasPendingBaskets && ui.hasPendingBaskets());
+    }
+
+    _onBasketsIdle() {
+        if (!this._pendingWin || this.won) return;
+        this._pendingWin = false;
+        this._win();
+    }
+
     _handleObjectiveResult(result) {
         if (!result) return false;
         if (result.win) {
+            if (this._needsBasketWinWait()) {
+                this.gameOver = true;
+                this._pendingWin = true;
+                this.time.delayedCall(1800, this._onBasketsIdle, [], this);
+                return true;
+            }
             this._win();
             return true;
         }
         if (result.lose) {
-            this._lose(result.reason);
+            this._lose(result.reason, result.loseKind || 'lives');
             return true;
         }
         return false;
     }
 
-    _lose(reason) {
+    _lose(reason, kind) {
         this.gameOver = true;
+        this.loseKind = kind || 'lives';
         this.game.events.emit('game:over', { win: false, level: this.levelId });
         this._overlay(reason || 'ПРОИГРЫШ', false);
     }
 
+    _continueOffer() {
+        if (!this.rewards || !this.rewards.canRevive()) return null;
+        if (this.loseKind === 'time') {
+            return { kind: 'time', label: '📺 +15 СЕКУНД' };
+        }
+        if (this.loseKind === 'cuts') {
+            return { kind: 'cuts', label: '📺 +1 СРЕЗ' };
+        }
+        return { kind: 'lives', label: '📺 +1 СЕРДЦЕ' };
+    }
+
     _claimRevive() {
+        return this._claimContinue('lives');
+    }
+
+    _claimContinue(kind) {
         if (!this.rewards || !this.rewards.canRevive()) {
             return Promise.resolve(false);
         }
+        kind = kind || this.loseKind || 'lives';
         return this.rewards.claimRevive().then(function (completed) {
             if (!completed || !this.sys.isActive()) return false;
-            if (this.endOverlay) {
-                this.endOverlay.destroy(true);
-                this.endOverlay = null;
-            }
             this.gameOver = false;
-            this.lives = 1;
-            this.invulnUntil = this.time.now + 2200;
-            this._respawnOnFrame();
-            this._blinkInvuln();
-            this.game.events.emit('game:lives-changed', { lives: this.lives });
+            this.loseKind = null;
+            if (kind === 'time' && this.objectives && this.objectives.grantExtraTime) {
+                this.objectives.grantExtraTime(15);
+                this._floatText(this.scale.width / 2, this.scale.height * 0.42, '+15 СЕК');
+            } else if (kind === 'cuts' && this.objectives && this.objectives.grantExtraCuts) {
+                this.objectives.grantExtraCuts(1);
+                this._floatText(this.scale.width / 2, this.scale.height * 0.42, '+1 СРЕЗ');
+            } else {
+                this.lives = Math.max(1, this.lives + 1);
+                this.invulnUntil = this.time.now + 2200;
+                this._respawnOnFrame();
+                this._blinkInvuln();
+                this.game.events.emit('game:lives-changed', { lives: this.lives });
+                this._floatText(this.player.x, this.player.y - 28, 'ВОСКРЕШЕНИЕ!');
+            }
             this.game.events.emit('game:revived');
-            this._floatText(this.player.x, this.player.y - 28, 'ВОСКРЕШЕНИЕ!');
             if (window.AudioManager) AudioManager.playSuccess();
+            var ui = this.scene.get('UI');
+            if (ui && ui.hideEndOverlay) ui.hideEndOverlay();
             return true;
         }.bind(this));
     }
 
     _overlay(title, win, extra) {
         extra = extra || {};
-        var W = this.scale.width;
-        var H = this.scale.height;
-        var self = this;
-        var overlay = this.add.container(0, 0).setDepth(50);
-        overlay.setAlpha(0);
-        this.endOverlay = overlay;
-        overlay.add(this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.65));
-        var titleSize = extra.subtitle || extra.campaignCta ? '48px' : '56px';
-        var titleText = this.add.text(W / 2, extra.subtitle ? H * 0.26 : H * 0.32, title, {
-            fontFamily: 'Arial, sans-serif',
-            fontSize: titleSize,
-            fontStyle: 'bold',
-            color: '#ffffff',
-            align: 'center',
-            wordWrap: { width: 640 }
-        }).setOrigin(0.5).setScale(0.72);
-        overlay.add(titleText);
-        if (extra.subtitle) {
-            overlay.add(this.add.text(W / 2, H * 0.36, extra.subtitle, {
-                fontFamily: 'Arial, sans-serif',
-                fontSize: '28px',
-                color: '#dfe4ff',
-                align: 'center',
-                wordWrap: { width: 600 }
-            }).setOrigin(0.5));
+        var ui = this.scene.get('UI');
+        if (ui && ui.showEndOverlay) {
+            ui.showEndOverlay({
+                title: title,
+                win: win,
+                extra: extra,
+                continueOffer: win ? null : this._continueOffer()
+            });
+            return;
         }
-
-        var canRevive = !win && this.lives <= 0 &&
-            this.rewards && this.rewards.canRevive();
-        var overlayButtons = [];
-        var addOverlayButton = function (btn) {
-            overlay.add(btn);
-            overlayButtons.push(btn);
-            return btn;
-        };
-        if (canRevive) {
-            var adBtn = addOverlayButton(new UIButton(this, W / 2, H * 0.48, '📺 ВОСКРЕСНУТЬ С 1 ЖИЗНЬЮ', function () {
-                if (!adBtn.hit.input || !adBtn.hit.input.enabled) return;
-                adBtn.hit.disableInteractive();
-                adBtn.setLabel('РЕКЛАМА...');
-                self._claimRevive().then(function (completed) {
-                    if (!completed && adBtn.scene) {
-                        adBtn.setLabel('РЕКЛАМА НЕДОСТУПНА');
-                    }
-                });
-            }, { width: 570, color: 0xffd24a, fontSize: 27, interactive: false }));
-        }
-
-        var retryY = extra.campaignCta ? 0.48 : (win ? 0.5 : (canRevive ? 0.62 : 0.52));
-        addOverlayButton(new UIButton(this, W / 2, H * retryY, 'ЗАНОВО', function () {
-            self.scene.restart({ pack: self.packId, level: self.levelId });
-        }, { width: 440, color: 0x4a5cff, interactive: false }));
-
-        if (extra.campaignCta) {
-            addOverlayButton(new UIButton(this, W / 2, H * 0.62, 'ПЕРЕЙТИ К ОСНОВНОЙ КАМПАНИИ', function () {
-                self.scene.start('LevelSelect', { pack: 'campaign' });
-            }, { width: 620, color: 0x3ee6a0, fontSize: 26, interactive: false }));
-        } else {
-            addOverlayButton(new UIButton(this, W / 2, H * (win ? 0.62 : (canRevive ? 0.74 : 0.64)), win ? 'ДАЛЬШЕ' : 'В МЕНЮ', function () {
-                if (win) {
-                    var next = LevelManager.get(self, self.levelId + 1, self.packId);
-                    if (next) self.scene.start('Game', { pack: self.packId, level: next.id });
-                    else self.scene.start('LevelSelect', { pack: self.packId });
-                } else {
-                    self.scene.start('Menu');
-                }
-            }, { width: 440, color: 0x2ce6d0, interactive: false }));
-        }
-        this._armOverlayButtons(overlay, overlayButtons);
-        this.tweens.add({
-            targets: overlay,
-            alpha: 1,
-            duration: 190,
-            ease: 'Quad.easeOut'
-        });
-        this.tweens.add({
-            targets: titleText,
-            scale: 1,
-            duration: 420,
-            ease: 'Back.easeOut'
-        });
-    }
-
-    _armOverlayButtons(overlay, buttons) {
-        var self = this;
-        var armed = false;
-        var pointerHandler = null;
-        var arm = function () {
-            if (armed) return;
-            if (!self.sys.isActive()) return;
-            armed = true;
-            if (pointerHandler) self.input.off('pointerup', pointerHandler);
-            for (var i = 0; i < buttons.length; i++) {
-                if (buttons[i] && buttons[i].arm) buttons[i].arm();
-            }
-        };
-        var anyPointerDown = function () {
-            var pointers = self.input.manager.pointers;
-            for (var i = 0; i < pointers.length; i++) {
-                if (pointers[i] && pointers[i].isDown) return true;
-            }
-            return false;
-        };
-        var wait = function () {
-            if (!self.sys.isActive() || armed) return;
-            if (anyPointerDown()) {
-                pointerHandler = wait;
-                self.input.once('pointerup', wait);
-                return;
-            }
-            self.time.delayedCall(140, arm);
-        };
-        overlay.once('destroy', function () {
-            if (pointerHandler) self.input.off('pointerup', pointerHandler);
-        });
-        wait();
     }
 }

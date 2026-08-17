@@ -82,7 +82,7 @@
             var knobX = -half + this._value * this._w;
 
             this.track.clear();
-            this.track.fillStyle(0x000000, 0.4);
+            this.track.fillStyle(0xcbb89a, 1);
             this.track.fillRoundedRect(-half, -6, this._w, 12, 6);
 
             this.fill.clear();

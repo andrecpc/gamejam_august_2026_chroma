@@ -39,7 +39,7 @@ export class ObjectiveManager {
         this._emit(snapshot);
         if (this.timeLimit > 0 && snapshot.timeLeft <= 0) {
             this.finished = true;
-            return { lose: true, reason: 'ВРЕМЯ ВЫШЛО' };
+            return { lose: true, reason: 'ВРЕМЯ ВЫШЛО', loseKind: 'time' };
         }
         return null;
     }
@@ -79,9 +79,21 @@ export class ObjectiveManager {
 
         if (won) return { win: true };
         if (this.maxCuts > 0 && this.cuts >= this.maxCuts) {
-            return { lose: true, reason: 'СРЕЗЫ ЗАКОНЧИЛИСЬ' };
+            return { lose: true, reason: 'СРЕЗЫ ЗАКОНЧИЛИСЬ', loseKind: 'cuts' };
         }
         return null;
+    }
+
+    grantExtraTime(seconds) {
+        this.timeLimit += Math.max(0, seconds || 0);
+        this.finished = false;
+        this._emit(this.snapshot());
+    }
+
+    grantExtraCuts(n) {
+        this.maxCuts += Math.max(0, n || 0);
+        this.finished = false;
+        this._emit(this.snapshot());
     }
 
     coveragePercent() {

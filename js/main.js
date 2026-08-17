@@ -6,14 +6,14 @@
  * пропорций и центрируется. Так одинаково хорошо и на телефоне, и в браузере
  * на десктопе (по бокам/сверху будут аккуратные тёмные поля).
  */
-import { GameScene } from './scenes/GameScene.js?v=1.5.7';
-import { UIScene } from './scenes/UIScene.js?v=1.5.7';
-import { SkinSelectScene } from './scenes/SkinSelectScene.js?v=1.5.4';
+import { GameScene } from './scenes/GameScene.js?v=1.7.5';
+import { UIScene } from './scenes/UIScene.js?v=1.7.5';
+import { SkinSelectScene } from './scenes/SkinSelectScene.js?v=1.7.1';
 
 var config = {
     type: Phaser.AUTO,
     parent: 'game',
-    backgroundColor: '#0d1030',
+    backgroundColor: '#0c254d',
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
