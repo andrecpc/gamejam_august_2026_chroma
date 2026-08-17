@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     width="720" height="1280" viewBox="0 0 720 1280">
+  <title>level 6 coverage</title>
+  <rect x="40" y="130" width="640" height="640"
+        fill="none" stroke="#889" stroke-width="2"/>
+  <rect id="poly_red_1" inkscape:label="poly_red_1"
+        x="68" y="158" width="194" height="584" fill="#ff4d6d"/>
+  <rect id="poly_green_1" inkscape:label="poly_green_1"
+        x="262" y="158" width="196" height="584" fill="#3ee6a0"/>
+  <rect id="poly_blue_1" inkscape:label="poly_blue_1"
+        x="458" y="158" width="194" height="584" fill="#4a9fff"/>
+  <circle id="spawner_enemy_pingpong" inkscape:label="spawner_enemy_pingpong"
+          cx="500" cy="410" r="10" fill="#1a1020"/>
+</svg>

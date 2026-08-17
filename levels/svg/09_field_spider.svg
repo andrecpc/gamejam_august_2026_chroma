@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     width="720" height="1280" viewBox="0 0 720 1280">
+  <title>level 9 field spider</title>
+  <g inkscape:groupmode="layer" inkscape:label="Colors">
+    <rect id="poly_purple_1" x="68" y="158" width="584" height="584"
+          fill="#b07cff" />
+  </g>
+  <g inkscape:groupmode="layer" inkscape:label="Boss markers">
+    <circle id="boss_core" cx="360" cy="430" r="46"
+            fill="#32184f" />
+    <circle id="boss_node_leg_nw" cx="190" cy="270" r="19"
+            fill="#ffd24a" />
+    <circle id="boss_node_leg_ne" cx="530" cy="270" r="19"
+            fill="#ffd24a" />
+    <circle id="boss_node_leg_sw" cx="190" cy="590" r="19"
+            fill="#ffd24a" />
+    <circle id="boss_node_leg_se" cx="530" cy="590" r="19"
+            fill="#ffd24a" />
+  </g>
+</svg>
