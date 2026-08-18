@@ -1,4 +1,5 @@
-import { SkinManager } from '../managers/SkinManager.js?v=1.7.1';
+import { SkinManager } from '../managers/SkinManager.js?v=1.7.6';
+import { makeUnicornDot } from '../entities/Player.js?v=1.7.10';
 
 export class SkinSelectScene extends Phaser.Scene {
     constructor() {
@@ -10,7 +11,7 @@ export class SkinSelectScene extends Phaser.Scene {
         var H = this.scale.height;
         Background.create(this);
 
-        this.add.text(W / 2, 105, 'СКИНЫ ТОЧКИ', {
+        this.add.text(W / 2, 105, 'СКИНЫ', {
             fontFamily: 'Arial, sans-serif',
             fontSize: '60px',
             fontStyle: 'bold',
@@ -78,7 +79,7 @@ export class SkinSelectScene extends Phaser.Scene {
             fontFamily: 'Arial, sans-serif',
             fontSize: '18px',
             fontStyle: 'bold',
-            color: selected ? '#3ee6a0' : (unlocked ? '#ffd24a' : '#737a96')
+            color: selected ? '#1a5c48' : (unlocked ? '#3d2a22' : '#5c5348')
         }).setOrigin(0.5));
 
         var hit = this.add.rectangle(0, 0, 280, 270, 0x000000, 0);
@@ -138,6 +139,40 @@ export class SkinSelectScene extends Phaser.Scene {
         } else if (skin.shape === 'hex') {
             shape = this.add.star(x, y, 6, 16, 27, skin.coreColor);
             shape.setStrokeStyle(3, skin.strokeColor);
+        } else if (skin.shape === 'saw') {
+            var saw = this.add.container(x, y);
+            var sg = this.add.graphics();
+            sg.fillStyle(0x4a2c1a, 1);
+            sg.fillRoundedRect(-22, -8, 16, 16, 3);
+            sg.fillStyle(0x6d7480, 1);
+            sg.fillRoundedRect(-10, -10, 18, 20, 4);
+            sg.fillStyle(0xd7dde4, 1);
+            sg.fillRoundedRect(6, -6, 24, 12, 2);
+            sg.fillStyle(0x5c6370, 1);
+            var si;
+            for (si = 0; si < 5; si++) {
+                var stx = 8 + si * 4;
+                sg.fillTriangle(stx, -6, stx + 2, -12, stx + 4, -6);
+            }
+            saw.add(sg);
+            saw.setRotation(0.4);
+            shape = saw;
+        } else if (skin.shape === 'saber') {
+            var saber = this.add.container(x, y);
+            var bg = this.add.graphics();
+            bg.fillStyle(0x48f0a0, 0.28);
+            bg.fillRoundedRect(0, -9, 36, 18, 8);
+            bg.fillStyle(0x7dffc4, 1);
+            bg.fillRoundedRect(4, -4, 32, 8, 3);
+            bg.fillStyle(0x2a241c, 1);
+            bg.fillRoundedRect(-16, -6, 20, 12, 2);
+            saber.add(bg);
+            saber.setRotation(-0.5);
+            shape = saber;
+        } else if (skin.shape === 'unicorn') {
+            shape = makeUnicornDot(this);
+            shape.setPosition(x, y);
+            shape.setRotation(0.35);
         } else if (skin.shape === 'comet') {
             shape = this.add.triangle(x, y, 0, -28, -18, 20, 18, 20, skin.coreColor);
             shape.setStrokeStyle(3, skin.strokeColor);

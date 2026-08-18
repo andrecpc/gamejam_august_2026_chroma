@@ -28,7 +28,15 @@
         [55, 59, 62]  // G
     ];
 
+    var BOSS_PROGRESSION = [
+        [45, 48, 51], // мрачный Am
+        [41, 44, 48], // F низко
+        [43, 46, 50], // Gdim-ish
+        [38, 41, 45]  // E низко
+    ];
+
     var TEMPO = 82;                       // ударов в минуту
+    var BOSS_TEMPO = 112;
     var SPB = 60 / TEMPO;                 // секунд на удар
     var STEP = SPB / 2;                   // восьмая нота — шаг арпеджио
     var STEPS_PER_BAR = 8;                // восьмых в такте
@@ -42,6 +50,8 @@
         _nextNoteTime: 0,
         _step: 0,
         _started: false,   // играет ли музыка сейчас
+        _musicMode: 'normal',
+        _desiredMode: 'normal',
 
         // Создаёт AudioContext (только после жеста пользователя!)
         _ensureContext: function () {
@@ -72,9 +82,14 @@
 
         // ---- Музыка ----
 
-        startMusic: function () {
+        startMusic: function (mode) {
             this._ensureContext();
-            if (!this.ctx || this._started) return;
+            if (!this.ctx) return;
+            if (mode) this._desiredMode = mode;
+            var next = this._desiredMode || 'normal';
+            if (this._started && this._musicMode === next) return;
+            this.stopMusic();
+            this._musicMode = next;
             this._started = true;
             this._step = 0;
             this._nextNoteTime = this.ctx.currentTime + 0.1;
@@ -94,46 +109,62 @@
             }
         },
 
+        _stepDuration: function () {
+            var tempo = this._musicMode === 'boss' ? BOSS_TEMPO : TEMPO;
+            return (60 / tempo) / 2;
+        },
+
         _scheduler: function () {
             if (!this.ctx) return;
+            var stepDur = this._stepDuration();
+            var loop = this._musicMode === 'boss'
+                ? STEPS_PER_BAR * BOSS_PROGRESSION.length
+                : TOTAL_STEPS;
             while (this._nextNoteTime < this.ctx.currentTime + 0.1) {
                 this._scheduleStep(this._step, this._nextNoteTime);
-                this._nextNoteTime += STEP;
-                this._step = (this._step + 1) % TOTAL_STEPS;
+                this._nextNoteTime += stepDur;
+                this._step = (this._step + 1) % loop;
             }
         },
 
         _scheduleStep: function (step, time) {
-            var bar = Math.floor(step / STEPS_PER_BAR);
-            var chord = PROGRESSION[bar];
+            var boss = this._musicMode === 'boss';
+            var progression = boss ? BOSS_PROGRESSION : PROGRESSION;
+            var bar = Math.floor(step / STEPS_PER_BAR) % progression.length;
+            var chord = progression[bar];
+            var spb = boss ? (60 / BOSS_TEMPO) : SPB;
 
             // В начале такта — мягкий пэд (все ноты аккорда, долго)
             if (step % STEPS_PER_BAR === 0) {
                 for (var i = 0; i < chord.length; i++) {
-                    this._pad(midiToFreq(chord[i]), time, SPB * 4);
+                    this._pad(midiToFreq(chord[i]), time, spb * 4, boss);
                 }
             }
 
             // Арпеджио — лёгкий «пляк» на каждой восьмой, ноты по кругу и выше на октаву
             var noteIndex = step % chord.length;
-            var freq = midiToFreq(chord[noteIndex] + 12);
-            // Пропускаем некоторые шаги, чтобы был воздух
-            if (step % 4 !== 3) {
-                this._pluck(freq, time);
+            var freq = midiToFreq(chord[noteIndex] + (boss ? 0 : 12));
+            if (boss) {
+                if (step % 2 === 0) this._pluck(freq, time, true);
+                if (step % STEPS_PER_BAR === 0) {
+                    this._pluck(midiToFreq(chord[0] - 12), time, true);
+                }
+            } else if (step % 4 !== 3) {
+                this._pluck(freq, time, false);
             }
         },
 
         // Долгий пэд с плавной атакой и затуханием
-        _pad: function (freq, time, dur) {
+        _pad: function (freq, time, dur, tense) {
             var osc = this.ctx.createOscillator();
             var g = this.ctx.createGain();
-            osc.type = 'sine';
+            osc.type = tense ? 'sawtooth' : 'sine';
             osc.frequency.value = freq;
 
-            var peak = 0.12;
+            var peak = tense ? 0.09 : 0.22;
             g.gain.setValueAtTime(0.0001, time);
-            g.gain.linearRampToValueAtTime(peak, time + 0.6);           // атака
-            g.gain.linearRampToValueAtTime(0.0001, time + dur);          // затухание
+            g.gain.linearRampToValueAtTime(peak, time + (tense ? 0.22 : 0.6));
+            g.gain.linearRampToValueAtTime(0.0001, time + dur);
 
             osc.connect(g);
             g.connect(this.musicGain);
@@ -142,15 +173,16 @@
         },
 
         // Короткий «пляк» арпеджио
-        _pluck: function (freq, time) {
+        _pluck: function (freq, time, tense) {
             var osc = this.ctx.createOscillator();
             var g = this.ctx.createGain();
-            osc.type = 'triangle';
+            osc.type = tense ? 'square' : 'triangle';
             osc.frequency.value = freq;
 
+            var peak = tense ? 0.07 : 0.18;
             g.gain.setValueAtTime(0.0001, time);
-            g.gain.linearRampToValueAtTime(0.10, time + 0.01);
-            g.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+            g.gain.linearRampToValueAtTime(peak, time + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.0001, time + (tense ? 0.22 : 0.35));
 
             osc.connect(g);
             g.connect(this.musicGain);
@@ -251,6 +283,31 @@
                     }, delay);
                 })(notes[i], i * 115);
             }
+        },
+        playFinale: function () {
+            var self = this;
+            this._ensureContext();
+            this.stopMusic();
+            this.stopFinale();
+            var el = new Audio('assets/audio/papercut.mp3');
+            el.loop = true;
+            var vol = GameSettings.get('musicOn') ? (GameSettings.get('musicVolume') || 0.9) : 0;
+            el.volume = Math.max(0, Math.min(1, vol * 0.32));
+            this._finaleEl = el;
+            var playFail = function () {
+                if (self._finaleEl !== el) return;
+                self.stopFinale();
+                self.playWin();
+            };
+            el.addEventListener('error', playFail);
+            var p = el.play();
+            if (p && p.catch) p.catch(playFail);
+        },
+        stopFinale: function () {
+            if (!this._finaleEl) return;
+            try { this._finaleEl.pause(); } catch (e) {}
+            this._finaleEl.src = '';
+            this._finaleEl = null;
         },
         playBack: function () { this._blip(midiToFreq(64), 'sine', 0.12, 0.07); },
         playCut: function () {

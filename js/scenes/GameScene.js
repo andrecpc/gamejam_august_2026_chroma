@@ -1,13 +1,13 @@
-import { Player } from '../entities/Player.js?v=1.7.5';
-import { FieldManager } from '../managers/FieldManager.js?v=1.7.1';
+import { Player } from '../entities/Player.js?v=1.7.10';
+import { FieldManager } from '../managers/FieldManager.js?v=1.7.10';
 import { VialManager } from '../managers/VialManager.js?v=1.5.5';
 import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
 import { MagneticManager } from '../managers/MagneticManager.js';
-import { BoosterManager } from '../managers/BoosterManager.js?v=1.5.1';
-import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.5';
+import { BoosterManager } from '../managers/BoosterManager.js?v=1.7.8';
+import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.8';
 import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.7.5';
-import { BossManager } from '../managers/BossManager.js?v=1.7.5';
-import { RewardedAdManager } from '../managers/RewardedAdManager.js?v=1.6.8';
+import { BossManager } from '../managers/BossManager.js?v=1.7.9';
+import { RewardedAdManager } from '../managers/RewardedAdManager.js?v=1.7.8';
 import { dist, hexToInt, pointHitsPolyline, polyCentroid } from '../utils/Geometry.js';
 
 var COLOR_NAMES = {
@@ -32,6 +32,7 @@ export class GameScene extends Phaser.Scene {
         this.gameOver = false;
         this.won = false;
         this.stick = { active: false, ox: 0, oy: 0, x: 0, y: 0 };
+        this._stickMouseHeld = false;
         this.dir = { x: 0, y: 0 };
         this.invulnUntil = 0;
         this.shieldUntil = 0;
@@ -41,6 +42,10 @@ export class GameScene extends Phaser.Scene {
         this._wasDrawing = false;
         this._pendingWin = false;
         this.loseKind = null;
+        this._hasMoved = false;
+        this._finaleConfettiEvent = null;
+        this._stickNeedsRelease = false;
+        this._onVisChange = null;
     }
 
     create() {
@@ -70,9 +75,22 @@ export class GameScene extends Phaser.Scene {
         this.bossManager = new BossManager(this, this.level);
         this.boosters = new BoosterManager(this, this.level);
         this.rewards = new RewardedAdManager(this);
+        if (window.AudioManager && AudioManager.startMusic) {
+            AudioManager.startMusic(
+                this.bossManager && this.bossManager.active ? 'boss' : 'normal'
+            );
+        }
 
         this.confetti = this.add.group({ maxSize: 180, runChildUpdate: true });
         this._bindInput();
+        this._spawnTime = this.time.now;
+        this._resetStick();
+        this._lockStickUntilRelease();
+        this.events.on('resume', this._lockStickUntilRelease, this);
+        this._onVisChange = function () {
+            if (document.hidden) self._lockStickUntilRelease();
+        };
+        document.addEventListener('visibilitychange', this._onVisChange);
 
         this.scene.launch('UI', { pack: this.packId, level: this.levelId });
         this.floatLayer = this.add.container(0, 0);
@@ -94,10 +112,11 @@ export class GameScene extends Phaser.Scene {
                     });
                 });
             } else if (self.bossManager && self.bossManager.type === 'colorBoss') {
-                self.time.delayedCall(500, function () {
+                self.time.delayedCall(800, function () {
                     self.game.events.emit('game:enemy-action', {
                         type: 'colorBoss',
-                        label: 'Отрезай цвет — падает полоска того же цвета'
+                        label: 'Отрезай цвет — падает полоска того же цвета',
+                        hold: 2600
                     });
                 });
             }
@@ -130,8 +149,27 @@ export class GameScene extends Phaser.Scene {
         }
         this.confetti = null;
         if (this.input) this.input.removeAllListeners();
+        this.events.off('resume', this._lockStickUntilRelease, this);
+        if (this._onVisChange) {
+            document.removeEventListener('visibilitychange', this._onVisChange);
+            this._onVisChange = null;
+        }
+        if (this._winMouseMove) {
+            window.removeEventListener('mousemove', this._winMouseMove);
+            this._winMouseMove = null;
+        }
+        if (this._winMouseUp) {
+            window.removeEventListener('mouseup', this._winMouseUp);
+            this._winMouseUp = null;
+        }
+        if (this._winBlur) {
+            window.removeEventListener('blur', this._winBlur);
+            this._winBlur = null;
+        }
         if (this.tweens) this.tweens.killAll();
         if (this.time) this.time.removeAllEvents();
+        this._finaleConfettiEvent = null;
+        if (window.AudioManager && AudioManager.stopFinale) AudioManager.stopFinale();
         this.enemies = [];
     }
 
@@ -139,46 +177,94 @@ export class GameScene extends Phaser.Scene {
         var self = this;
         this.input.on('pointerdown', function (p) {
             if (self.gameOver) return;
+            if (self._stickNeedsRelease) return;
             var W = self.scale.width;
             var H = self.scale.height;
             if (p.x > W - 120 && p.y < 120) return;
-            if (p.x > W - 185 && p.y > H - 120) return;
+            if (p.x > W - 230 && p.y > H - 180) return;
             self.stick.active = true;
             self.stick.ox = p.x;
             self.stick.oy = p.y;
+            self._stickMouseHeld = !p || p.pointerType !== 'touch';
         });
         this.input.on('pointermove', function (p) {
             if (!self.stick.active) return;
-            var dx = p.x - self.stick.ox;
-            var dy = p.y - self.stick.oy;
-            var max = 70;
-            var len = Math.sqrt(dx * dx + dy * dy);
-            if (len < 8) {
-                self.dir.x = 0;
-                self.dir.y = 0;
-                return;
+            self._aimStick(p.x, p.y);
+        });
+        this.input.on('pointerup', function (p) {
+            if (p && p.pointerType !== 'touch') {
+                var inside = p.x >= 0 && p.y >= 0 &&
+                    p.x <= self.scale.width && p.y <= self.scale.height;
+                if (!inside) return;
+                self._stickMouseHeld = false;
             }
-            var k = len > max ? max / len : 1;
-            self.dir.x = (dx * k) / max;
-            self.dir.y = (dy * k) / max;
+            self._resetStick();
+            if (!self._anyPointerDown()) self._stickNeedsRelease = false;
         });
-        this.input.on('pointerup', function () {
-            self.stick.active = false;
-            self.dir.x = 0;
-            self.dir.y = 0;
-            if (self._stickGfx() ) self._stickGfx().clear();
+        this.input.on('pointerupoutside', function (p) {
+            if (p && p.pointerType === 'mouse') return;
+            self._resetStick();
+            if (!self._anyPointerDown()) self._stickNeedsRelease = false;
         });
-        this.input.on('pointerupoutside', function () {
-            self.stick.active = false;
-            self.dir.x = 0;
-            self.dir.y = 0;
-            if (self._stickGfx()) self._stickGfx().clear();
-        });
+        this._winMouseMove = function (ev) {
+            if (!self.stick || !self.stick.active || !self._stickMouseHeld) return;
+            var pos = self._clientToGame(ev.clientX, ev.clientY);
+            self._aimStick(pos.x, pos.y);
+        };
+        this._winMouseUp = function () {
+            if (!self._stickMouseHeld) return;
+            self._stickMouseHeld = false;
+            self._resetStick();
+            self._stickNeedsRelease = false;
+        };
+        this._winBlur = function () {
+            if (!self._stickMouseHeld) return;
+            self._stickMouseHeld = false;
+            self._lockStickUntilRelease();
+        };
+        window.addEventListener('mousemove', this._winMouseMove);
+        window.addEventListener('mouseup', this._winMouseUp);
+        window.addEventListener('blur', this._winBlur);
+    }
+
+    _clientToGame(clientX, clientY) {
+        var bounds = this.scale && this.scale.canvasBounds;
+        if (!bounds || bounds.width < 1 || bounds.height < 1) {
+            bounds = this.game.canvas.getBoundingClientRect();
+        }
+        return {
+            x: (clientX - bounds.left) * (this.scale.width / bounds.width),
+            y: (clientY - bounds.top) * (this.scale.height / bounds.height)
+        };
+    }
+
+    _aimStick(x, y) {
+        var dx = x - this.stick.ox;
+        var dy = y - this.stick.oy;
+        var max = 70;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 8) {
+            this.dir.x = 0;
+            this.dir.y = 0;
+            return;
+        }
+        var k = len > max ? max / len : 1;
+        this.dir.x = (dx * k) / max;
+        this.dir.y = (dy * k) / max;
     }
 
     update(t, dt) {
         if (this.gameOver) return;
+        if (this._stickNeedsRelease) {
+            this._resetStick();
+            if (!this._anyPointerDown() && !this._stickMouseHeld) {
+                this._stickNeedsRelease = false;
+            }
+        } else if (this.stick.active && !this._anyPointerDown() && !this._stickMouseHeld) {
+            this._resetStick();
+        }
         var dts = Math.min(dt, 50) / 1000;
+        if (this.dir && (this.dir.x || this.dir.y)) this._hasMoved = true;
         var timedResult = this.objectives ? this.objectives.update() : null;
         if (this._handleObjectiveResult(timedResult)) return;
 
@@ -213,10 +299,11 @@ export class GameScene extends Phaser.Scene {
             this.player.setShieldActive(this.time.now < this.shieldUntil);
         }
         this._collideEnemies();
-        if (this.enemyManager && this.enemyManager.hitsPlayer(this.player)) {
+        var canConsumeShot = this.time.now >= this.invulnUntil;
+        if (this.enemyManager && this.enemyManager.hitsPlayer(this.player, canConsumeShot)) {
             this._hurt('снаряд');
         }
-        if (this.bossManager && this.bossManager.hitsPlayer(this.player)) {
+        if (this.bossManager && this.bossManager.hitsPlayer(this.player, canConsumeShot)) {
             this._hurt('залп босса');
         }
         if (this.player.flameReachedHero()) this._hurt('огонь');
@@ -253,6 +340,42 @@ export class GameScene extends Phaser.Scene {
         g.fillCircle(kx, ky, 22);
         g.lineStyle(4, 0x111111, 1);
         g.strokeCircle(kx, ky, 22);
+    }
+
+    _resetStick() {
+        this.stick.active = false;
+        this.dir.x = 0;
+        this.dir.y = 0;
+        if (this._stickGfx()) this._stickGfx().clear();
+    }
+
+    _anyPointerDown() {
+        var pointers = this.input && this.input.manager && this.input.manager.pointers;
+        if (!pointers) return false;
+        var i;
+        for (i = 0; i < pointers.length; i++) {
+            if (pointers[i] && pointers[i].isDown) return true;
+        }
+        return false;
+    }
+
+    _lockStickUntilRelease() {
+        this._stickMouseHeld = false;
+        this._resetStick();
+        this._stickNeedsRelease = true;
+        var self = this;
+        if (this._stickUnlockEvent) {
+            this._stickUnlockEvent.remove(false);
+            this._stickUnlockEvent = null;
+        }
+        if (!this._anyPointerDown()) {
+            this._stickNeedsRelease = false;
+            return;
+        }
+        this._stickUnlockEvent = this.time.delayedCall(600, function () {
+            self._stickNeedsRelease = false;
+            self._resetStick();
+        });
     }
 
     _collideEnemies() {
@@ -405,7 +528,6 @@ export class GameScene extends Phaser.Scene {
                 e.kill();
             }
             (applied.killed || []).forEach(kill);
-            (cut.trapped || []).forEach(kill);
             if (window.AudioManager && AudioManager.playCut) AudioManager.playCut();
             GameSettings.vibrate(12);
             this._cutImpact();
@@ -515,7 +637,8 @@ export class GameScene extends Phaser.Scene {
         var colors = [0xde3449, 0x1f7fd7, 0xf0c107, 0x47a798, 0xd28e43, 0xf3ead8, 0x8960a0];
         for (var i = 0; i < total; i++) {
             var bit = host.add.rectangle(x, y, Phaser.Math.Between(7, 12), Phaser.Math.Between(12, 20), Phaser.Utils.Array.GetRandom(colors)).setDepth(205);
-            this.tweens.add({
+            var twHost = (ui && ui.tweens) ? ui : this;
+            twHost.tweens.add({
                 targets: bit,
                 x: x + Phaser.Math.Between(-140, 140),
                 y: y + Phaser.Math.Between(50, 220),
@@ -603,25 +726,28 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
-    _floatText(x, y, msg) {
+    _floatText(x, y, msg, opts) {
+        opts = opts || {};
         var ui = this.scene.get('UI');
         var host = (ui && ui.add && ui.scene) ? ui : this;
         var W = this.scale.width;
         var H = this.scale.height;
         var t = host.add.text(0, 0, msg, {
             fontFamily: 'Arial, sans-serif',
-            fontSize: '22px',
+            fontSize: opts.size || '22px',
             fontStyle: 'bold',
-            color: '#ffd24a',
+            color: opts.color || '#ffd24a',
             stroke: '#000000',
-            strokeThickness: 4
+            strokeThickness: opts.stroke != null ? opts.stroke : 4
         }).setOrigin(0.5).setDepth(95);
         var pad = 28;
         var hw = Math.max(36, t.width / 2);
         var hh = Math.max(14, t.height / 2);
         var tx = Phaser.Math.Clamp(x, pad + hw, W - pad - hw);
         var ty = Phaser.Math.Clamp(y, pad + hh, H - pad - hh);
-        var endY = Phaser.Math.Clamp(ty - 36, pad + hh, H - pad - hh);
+        var rise = opts.rise != null ? opts.rise : 36;
+        var endY = Phaser.Math.Clamp(ty - rise, pad + hh, H - pad - hh);
+        var hold = opts.hold != null ? opts.hold : 1600;
         t.setPosition(tx, ty);
         host.tweens.add({
             targets: t,
@@ -634,7 +760,7 @@ export class GameScene extends Phaser.Scene {
                     targets: t,
                     alpha: 0,
                     duration: 420,
-                    delay: 1600,
+                    delay: hold,
                     onComplete: function () { t.destroy(); }
                 });
             }
@@ -642,9 +768,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     _hurt() {
-        if (this.gameOver) return;
+        if (this.gameOver) return false;
         if (this._tryBossWin()) {
-            return;
+            return false;
         }
         if (this.time.now < this.shieldUntil) {
             if (this.time.now >= this.shieldNoticeUntil) {
@@ -652,10 +778,10 @@ export class GameScene extends Phaser.Scene {
                 this._floatText(this.player.x, this.player.y - 28, 'ЩИТ!');
                 if (window.AudioManager && AudioManager.playZap) AudioManager.playZap();
             }
-            return;
+            return false;
         }
-        if (this.time.now < this.invulnUntil) return;
-        this.invulnUntil = this.time.now + 1100;
+        if (this.time.now < this.invulnUntil) return false;
+        this.invulnUntil = this.time.now + 700;
         this.lives -= 1;
         if (window.AudioManager && AudioManager.playHit) AudioManager.playHit();
         GameSettings.vibrate([35, 25, 45]);
@@ -668,6 +794,7 @@ export class GameScene extends Phaser.Scene {
         this._respawnOnFrame();
         this._blinkInvuln();
         if (this.lives <= 0) this._lose();
+        return true;
     }
 
     addLife(amount) {
@@ -692,6 +819,7 @@ export class GameScene extends Phaser.Scene {
         if (!this.rewards) return Promise.resolve(null);
         return this.rewards.claim(offerId).then(function (option) {
             if (!option || !this.sys) return null;
+            this._lockStickUntilRelease();
             this._applyReward(option);
             return option;
         }.bind(this));
@@ -860,13 +988,23 @@ export class GameScene extends Phaser.Scene {
                 GameSettings.unlockCampaign();
             }
         }
-        if (window.AudioManager) {
+        if (this._isCampaignComplete()) {
+            if (window.AudioManager && AudioManager.playFinale) AudioManager.playFinale();
+            else if (window.AudioManager) AudioManager.playWin();
+        } else if (window.AudioManager) {
             if (AudioManager.playWin) AudioManager.playWin();
             else AudioManager.playSuccess();
         }
         GameSettings.vibrate([18, 35, 18, 35, 45]);
+        this._resetStick();
+        this._lockStickUntilRelease();
         this.game.events.emit('game:over', { win: true, level: this.levelId });
-        if (this._isTrainingComplete()) {
+        if (this._isCampaignComplete()) {
+            this._overlay('УРОВЕНЬ ПРОЙДЕН', true, {
+                subtitle: 'Ну вот вы и прошли эту чудо игру. Респект!',
+                finale: true
+            });
+        } else if (this._isTrainingComplete()) {
             this._overlay('ОБУЧЕНИЕ ПРОЙДЕНО', true, {
                 subtitle: 'Вот вы и прошли обучение.',
                 campaignCta: true
@@ -876,15 +1014,40 @@ export class GameScene extends Phaser.Scene {
         }
         if (!GameSettings.reducedMotion()) {
             this.cameras.main.flash(260, 160, 255, 220, true);
-            var W = this.scale.width;
-            var H = this.scale.height;
-            this._confetti(W * 0.5, H * 0.3, 32);
-            this._confetti(W * 0.22, H * 0.36, 26);
-            this._confetti(W * 0.78, H * 0.36, 26);
-            this._confetti(W * 0.38, H * 0.24, 20);
-            this._confetti(W * 0.62, H * 0.24, 20);
-            this._confetti(W * 0.5, H * 0.48, 18);
+            this._burstWinConfetti();
+            if (this._isCampaignComplete()) this._loopWinConfetti();
         }
+    }
+
+    _isCampaignComplete() {
+        return this.packId === 'campaign' &&
+            this.levelId >= LevelManager.count(this, 'campaign');
+    }
+
+    _burstWinConfetti() {
+        var W = this.scale.width;
+        var H = this.scale.height;
+        this._confetti(W * 0.5, H * 0.3, 32);
+        this._confetti(W * 0.22, H * 0.36, 26);
+        this._confetti(W * 0.78, H * 0.36, 26);
+        this._confetti(W * 0.38, H * 0.24, 20);
+        this._confetti(W * 0.62, H * 0.24, 20);
+        this._confetti(W * 0.5, H * 0.48, 18);
+    }
+
+    _loopWinConfetti() {
+        var self = this;
+        if (this._finaleConfettiEvent) this._finaleConfettiEvent.remove(false);
+        this._finaleConfettiEvent = this.time.addEvent({
+            delay: 260,
+            loop: true,
+            callback: function () {
+                if (!self.sys.isActive()) return;
+                var W = self.scale.width;
+                var H = self.scale.height;
+                self._confetti(Phaser.Math.Between(80, W - 80), Phaser.Math.Between(H * 0.18, H * 0.42), 16);
+            }
+        });
     }
 
     _isTrainingComplete() {
@@ -927,6 +1090,8 @@ export class GameScene extends Phaser.Scene {
     _lose(reason, kind) {
         this.gameOver = true;
         this.loseKind = kind || 'lives';
+        this._resetStick();
+        this._lockStickUntilRelease();
         this.game.events.emit('game:over', { win: false, level: this.levelId });
         this._overlay(reason || 'ПРОИГРЫШ', false);
     }
@@ -955,6 +1120,8 @@ export class GameScene extends Phaser.Scene {
             if (!completed || !this.sys.isActive()) return false;
             this.gameOver = false;
             this.loseKind = null;
+            this._resetStick();
+            this._lockStickUntilRelease();
             if (kind === 'time' && this.objectives && this.objectives.grantExtraTime) {
                 this.objectives.grantExtraTime(15);
                 this._floatText(this.scale.width / 2, this.scale.height * 0.42, '+15 СЕК');

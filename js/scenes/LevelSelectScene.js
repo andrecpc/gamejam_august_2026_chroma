@@ -25,6 +25,12 @@
             }[this.packId] || { title: 'УРОВНИ', subtitle: '' };
 
             Background.create(this);
+            if (window.AudioManager && AudioManager.startMusic) {
+                AudioManager.startMusic('normal');
+                if (!GameSettings.get('musicOn') && AudioManager.stopMusic) {
+                    AudioManager.stopMusic();
+                }
+            }
 
             this.add.text(W / 2, H * 0.08, meta.title, {
                 fontFamily: 'Arial, sans-serif',
@@ -114,7 +120,9 @@
                     color: '#f3ead8'
                 }).setOrigin(0.5);
                 container.add(num);
-                var name = this.add.text(0, 28, level.name || '', {
+                var levelName = level.name || '';
+                if (window.Paper && Paper.basketText) levelName = Paper.basketText(levelName);
+                var name = this.add.text(0, 28, levelName, {
                     fontFamily: 'Arial, sans-serif',
                     fontSize: size > 110 ? '16px' : '13px',
                     color: '#f3ead8',

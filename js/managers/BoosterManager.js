@@ -1,11 +1,12 @@
-import { Booster } from '../entities/Booster.js?v=1.3.0';
+import { Booster } from '../entities/Booster.js?v=1.7.7';
 import { dist } from '../utils/Geometry.js';
 
 var LABELS = {
     speed: 'Ускорение',
     slow: 'Замедление',
     shield: 'Щит',
-    enemySlow: 'Холод'
+    enemySlow: 'Холод',
+    hurt: '−1 жизнь'
 };
 
 export class BoosterManager {
@@ -30,6 +31,7 @@ export class BoosterManager {
                 callbackScope: this
             });
             this.spawnTimers.push(antiTimer);
+            if (this.antiCfg.immediate) this._spawnAntiBooster();
         }
     }
 
@@ -50,6 +52,13 @@ export class BoosterManager {
         } else {
             item.show();
         }
+        var life = cfg.lifetime || 0;
+        if (life > 0 && !cfg.persist) {
+            var hideTimer = this.scene.time.delayedCall(delay + life, function () {
+                if (item && !item.collected) item.despawn();
+            });
+            this.spawnTimers.push(hideTimer);
+        }
     }
 
     spawnReward(type, x, y, overrides) {
@@ -65,6 +74,13 @@ export class BoosterManager {
 
     _spawnAntiBooster() {
         if (!this.scene || this.scene.gameOver) return;
+        var maxAlive = (this.antiCfg && this.antiCfg.maxAlive) || 6;
+        var alive = 0;
+        var i;
+        for (i = 0; i < this.items.length; i++) {
+            if (this.items[i].active && !this.items[i].collected) alive++;
+        }
+        if (alive >= maxAlive) return;
         var types = (this.antiCfg && this.antiCfg.types) || ['slow'];
         var type = types[Math.floor(Math.random() * types.length)];
         var bounds = this.scene.field
@@ -72,12 +88,15 @@ export class BoosterManager {
             : { x: 90, y: 180, w: 540, h: 540 };
         var x = bounds.x + 40 + Math.random() * Math.max(40, bounds.w - 80);
         var y = bounds.y + 40 + Math.random() * Math.max(40, bounds.h - 80);
+        var persist = !!(this.antiCfg && this.antiCfg.persist);
         this._create({
             type: type,
             x: Math.round(x),
             y: Math.round(y),
             duration: type === 'slow' ? 4500 : 5000,
-            multiplier: type === 'slow' ? 0.55 : 0.5
+            multiplier: type === 'slow' ? 0.55 : 0.5,
+            persist: persist,
+            lifetime: persist ? 0 : (this.antiCfg.lifetime || 3200)
         });
     }
 
@@ -101,7 +120,7 @@ export class BoosterManager {
         this._apply(resolved, player, enemies);
 
         if (window.AudioManager) {
-            if (resolved.type === 'slow') AudioManager.playError();
+            if (resolved.type === 'slow' || resolved.type === 'hurt') AudioManager.playError();
             else AudioManager.playSuccess();
         }
         GameSettings.vibrate(16);
@@ -166,6 +185,10 @@ export class BoosterManager {
             break;
         case 'life':
             if (this.scene.addLife) this.scene.addLife(cfg.amount || 1);
+            break;
+        case 'hurt':
+            this.scene.invulnUntil = 0;
+            if (this.scene._hurt) this.scene._hurt('антибустер');
             break;
         case 'removeEnemy':
             for (var i = 0; i < enemies.length; i++) {
@@ -232,6 +255,7 @@ export class BoosterManager {
             return '? → ' + (LABELS[cfg.type] || cfg.type);
         }
         if (cfg.type === 'life') return '+1 жизнь';
+        if (cfg.type === 'hurt') return '−1 жизнь';
         if (cfg.type === 'removeEnemy') return 'Враг удалён';
         return LABELS[cfg.type] || cfg.type;
     }

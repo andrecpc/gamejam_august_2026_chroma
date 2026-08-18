@@ -75,7 +75,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
             id=1,
             pack="training",
             name="Капля",
-            hint="двигайся стиком и отрезай кусочки цвета",
+            hint="нажми в любом месте — появится стик",
             vials=[{"color": "red"}],
             polygons=full_red,
             tutorials=[
@@ -83,13 +83,13 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "cut_wall",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Двигайся стиком и отрезай кусочки цвета.",
+                    "text": "Нажми в любом месте — появится стик. Попробуй отрезать лист бумаги, зажимай стик и управляй движением точки",
                 },
                 {
                     "id": "cut_keep_going",
                     "trigger": "cut",
                     "persist": "until-draw",
-                    "text": "Молодец! Продолжай отрезать цвет, пока пробирка не заполнится.",
+                    "text": "Молодец! Режь дальше, пока корзина не заполнится.",
                 },
             ],
         ),
@@ -97,7 +97,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
             id=2,
             pack="training",
             name="Два цвета",
-            hint="в пробирку идёт цвет отрезанного куска",
+            hint="в корзину идёт цвет отрезанного куска",
             vials=[{"color": "red"}, {"color": "blue"}],
             polygons=two_halves,
             tutorials=[
@@ -105,7 +105,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "cut_color",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "В пробирку идёт цвет отрезанного куска. Сначала красный, потом синий. Попробуй отрезать 2 цвета за один раз.",
+                    "text": "В корзину идёт цвет куска. Сначала красный, потом синий.",
                 }
             ],
         ),
@@ -113,7 +113,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
             id=3,
             pack="training",
             name="Очередь",
-            hint="×N — сколько пробирок этого цвета ещё будет",
+            hint="×N — сколько корзин этого цвета ещё будет",
             vials=[
                 {"color": "red"},
                 {"color": "red"},
@@ -127,7 +127,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "vial_queue",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "×N показывает, сколько пробирок этого цвета ещё будет. Не срезай весь цвет сразу.",
+                    "text": "×N — сколько корзин этого цвета ещё будет. Не срезай весь цвет сразу.",
                 }
             ],
         ),
@@ -135,7 +135,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
             id=4,
             pack="training",
             name="Живой цвет",
-            hint="наполни пробирки, не касаясь врага",
+            hint="наполни корзины, не касаясь врага",
             vials=[{"color": "red"}, {"color": "blue"}],
             enemies=[{"type": "pingpong", "x": 220, "y": 420, "vx": 70, "vy": 52}],
             polygons=two_halves,
@@ -144,7 +144,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "enemy_pingpong",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Это враг — его лучше избегать. Враги бывают разных типов. Наполни пробирки, не касаясь врага.",
+                    "text": "Это враг. Наполни корзины, не касаясь его.",
                 }
             ],
         ),
@@ -164,7 +164,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "magnet_path",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Точка прилипнет к светящейся линии. После прилипания можно отлипнуть свайпом.",
+                    "text": "Точка прилипнет к линии. Свайп в сторону — отлипнуть.",
                 }
             ],
         ),
@@ -187,7 +187,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "boosters",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "В игре есть разные бустеры. Пересеки эти, чтобы проверить, что они делают.",
+                    "text": "Пересеки значки — это бустеры.",
                 }
             ],
         ),
@@ -206,7 +206,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "constraint_time",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Некоторые уровни имеют дополнительные ограничения. Здесь это таймер — бывают и другие.",
+                    "text": "Здесь таймер. На других уровнях бывают и свои ограничения.",
                 }
             ],
         ),
@@ -289,24 +289,23 @@ def fill_around_diamonds(
     return out
 
 
+
+
 def orbit_field() -> list[dict]:
+    """Две сплошные половины + четыре жёлтых ромба сверху, без дыр в поле."""
     yellows = [
-        (214, 304, 78, 78),
-        (506, 304, 78, 78),
-        (214, 596, 78, 78),
-        (506, 596, 78, 78),
+        (230, 320, 78, 78),
+        (490, 320, 78, 78),
+        (230, 580, 78, 78),
+        (490, 580, 78, 78),
     ]
-    polys = [
+    return [
         shape(f"poly_yellow_{i + 1}", "yellow", diamond_pts(cx, cy, rx, ry))
         for i, (cx, cy, rx, ry) in enumerate(yellows)
+    ] + [
+        poly("poly_red_1", "red", 68, 158, 292, 584),
+        poly("poly_blue_1", "blue", 360, 158, 292, 584),
     ]
-    polys.extend(fill_around_diamonds("red", "poly_red", 68, 158, 360, 742, [
-        (214, 304, 78, 78), (214, 596, 78, 78),
-    ]))
-    polys.extend(fill_around_diamonds("blue", "poly_blue", 360, 158, 652, 742, [
-        (506, 304, 78, 78), (506, 596, 78, 78),
-    ]))
-    return polys
 
 
 def superellipse_path(cx: float, cy: float, rx: float, ry: float, n: float = 1.35, count: int = 48) -> list[dict]:
@@ -715,6 +714,27 @@ def figure8_paths() -> list[dict]:
     ]
 
 
+def neon_rails() -> list[dict]:
+    return [
+        {
+            "closed": False,
+            "points": [
+                {"x": 110, "y": 240}, {"x": 360, "y": 390}, {"x": 610, "y": 240},
+            ],
+        },
+        {
+            "closed": False,
+            "points": [
+                {"x": 110, "y": 660}, {"x": 360, "y": 510}, {"x": 610, "y": 660},
+            ],
+        },
+        {
+            "closed": False,
+            "points": [{"x": 360, "y": 200}, {"x": 360, "y": 700}],
+        },
+    ]
+
+
 def thieves(count: int, speed: float) -> list[dict]:
     spots = [
         (140, 220), (360, 220), (560, 220),
@@ -779,8 +799,8 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
         "x": 360,
         "y": 430,
         "radius": 46,
-        "initialDelay": 2000,
-        "attackInterval": 2500,
+        "initialDelay": 0,
+        "attackInterval": 1250,
         "radialBullets": 6,
         "aimedEvery": 2,
         "bulletSpeed": 76,
@@ -872,9 +892,8 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=7,
             pack="campaign",
             name="Союзник",
-            lives=4,
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}],
-            enemies=thieves(10, 64),
+            enemies=thieves(6, 64),
             polygons=three_blocks,
         ),
         base(
@@ -882,7 +901,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             pack="campaign",
             name="Лихорадка",
             playerSpeed=250,
-            lives=4,
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "red"}],
             enemies=[{"type": "pingpong", "x": 500, "y": 360, "vx": 86, "vy": 64}],
             boosters=[{"type": "shield", "x": 360, "y": 450, "duration": 5000}],
@@ -903,7 +921,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=10,
             pack="campaign",
             name="Стробоскоп",
-            lives=5,
             vials=[
                 {"color": "red"}, {"color": "blue"}, {"color": "yellow"},
                 {"color": "green"}, {"color": "purple"},
@@ -924,12 +941,24 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=11,
             pack="campaign",
             name="Крепость",
-            lives=4,
             maxLives=5,
             playerSpeed=220,
             vials=[{"color": "red"}, {"color": "blue"}],
-            boosters=[{"type": "shield", "x": 360, "y": 650, "duration": 6000}],
-            antiBoosters={"interval": 5000, "types": ["slow"]},
+            boosters=[
+                {"type": "shield", "x": 360, "y": 650, "duration": 6000},
+                {"type": "slow", "x": 150, "y": 260, "duration": 4500, "multiplier": 0.55, "lifetime": 2800, "spawnDelay": 400},
+                {"type": "slow", "x": 570, "y": 260, "duration": 4500, "multiplier": 0.55, "lifetime": 3200, "spawnDelay": 1100},
+                {"type": "slow", "x": 360, "y": 430, "duration": 4500, "multiplier": 0.55, "lifetime": 2600, "spawnDelay": 1800},
+                {"type": "hurt", "x": 180, "y": 540, "lifetime": 3000, "spawnDelay": 700},
+                {"type": "hurt", "x": 540, "y": 540, "lifetime": 2800, "spawnDelay": 1600},
+            ],
+            antiBoosters={
+                "interval": 2400,
+                "types": ["slow", "slow", "hurt"],
+                "lifetime": 3200,
+                "maxAlive": 4,
+                "immediate": True,
+            },
             boss={
                 "type": "bulletHell",
                 "x": 360,
@@ -966,30 +995,39 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             name="Часы",
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}, {"color": "green"}],
             polygons=pie_wedges(360, 450, ["red", "blue", "yellow", "green"], 8),
-            constraints={"maxCuts": 4, "winCondition": "vials"},
+            constraints={"maxCuts": 3, "winCondition": "vials"},
         ),
         base(
             id=14,
             pack="campaign",
             name="Неон",
-            vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}],
+            playerSpeed=230,
+            vials=[
+                {"color": "red"}, {"color": "yellow"},
+                {"color": "blue"}, {"color": "green"},
+            ],
             magnetSnapRadius=24,
             magnetDetachDistance=34,
-            magnetRideSpeedFactor=1.7,
-            magneticPaths=orbit_path,
-            boosters=[
-                {"type": "mystery", "x": 200, "y": 260, "spawnDelay": 800},
-                {"type": "speed", "x": 520, "y": 260, "duration": 5000, "multiplier": 1.5},
-                {"type": "mystery", "x": 360, "y": 620, "spawnDelay": 1800},
+            magnetRideSpeedFactor=2.05,
+            magneticPaths=neon_rails(),
+            enemies=[
+                {
+                    "type": "laser", "x": 140, "y": 450, "angle": 0, "length": 180,
+                    "interval": 3600, "warning": 1000, "activeTime": 600, "phase": 0,
+                },
+                {
+                    "type": "laser", "x": 580, "y": 450, "angle": 180, "length": 180,
+                    "interval": 3600, "warning": 1000, "activeTime": 600, "phase": 1800,
+                },
+                {"type": "chase", "x": 360, "y": 240, "vx": 36, "vy": 28, "speed": 62},
             ],
-            enemies=[{"type": "pingpong", "x": 240, "y": 500, "vx": 60, "vy": 48}],
-            polygons=orbit_colors,
+            boosters=[{"type": "speed", "x": 360, "y": 450, "duration": 5000, "multiplier": 1.4}],
+            polygons=chevron_bands(["red", "yellow", "blue", "green"], 42, 2),
         ),
         base(
             id=15,
             pack="campaign",
             name="Клетка",
-            lives=4,
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}, {"color": "green"}],
             enemies=[
                 {"type": "pingpong", "x": 200, "y": 300, "vx": 72, "vy": 50},
@@ -1011,7 +1049,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=17,
             pack="campaign",
             name="Охота",
-            lives=4,
             playerSpeed=225,
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}, {"color": "green"}],
             enemies=[
@@ -1026,7 +1063,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=18,
             pack="campaign",
             name="Перекрёсток",
-            lives=5,
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}, {"color": "green"}],
             enemies=[
                 {"type": "laser", "x": 360, "y": 180, "angle": 90, "length": 300, "interval": 3800, "warning": 1100, "activeTime": 700, "phase": 0},
@@ -1043,7 +1079,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             pack="campaign",
             name="Буря",
             playerSpeed=235,
-            lives=4,
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "green"}],
             enemies=[
                 {"type": "pingpong", "x": 200, "y": 320, "vx": 80, "vy": 58},
@@ -1055,14 +1090,13 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
                 {"type": "shield", "x": 360, "y": 450, "duration": 5000},
                 {"type": "speed", "x": 140, "y": 620, "duration": 4000, "multiplier": 1.4},
             ],
-            constraints={"time": 32, "winCondition": "vials"},
+            constraints={"time": 7, "winCondition": "vials"},
             polygons=three_stripes,
         ),
         base(
             id=20,
             pack="campaign",
             name="Паутина",
-            lives=4,
             playerSpeed=215,
             vials=[{"color": "purple"}, {"color": "purple"}],
             boss=spider,
@@ -1073,7 +1107,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=21,
             pack="campaign",
             name="Спираль",
-            lives=4,
             vials=[
                 {"color": "red"}, {"color": "red"},
                 {"color": "blue"}, {"color": "blue"},
@@ -1081,14 +1114,13 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             ],
             enemies=[{"type": "pingpong", "x": 360, "y": 210, "vx": 64, "vy": 40}],
             polygons=square_spiral(["red", "blue", "yellow", "green"], 62),
-            constraints={"maxCuts": 6, "winCondition": "vials"},
+            constraints={"maxCuts": 5, "winCondition": "vials"},
         ),
         base(
             id=22,
             pack="campaign",
             name="Песок",
             playerSpeed=230,
-            lives=4,
             vials=[
                 {"color": "red"}, {"color": "red"},
                 {"color": "yellow"},
@@ -1098,14 +1130,13 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
                 {"type": "pingpong", "x": 200, "y": 360, "vx": 62, "vy": 44},
                 {"type": "chase", "x": 500, "y": 620, "vx": -40, "vy": -28, "speed": 68},
             ],
-            constraints={"time": 27, "winCondition": "vials"},
+            constraints={"time": 15, "winCondition": "vials"},
             polygons=hourglass(),
         ),
         base(
             id=23,
             pack="campaign",
             name="Восьмёрка",
-            lives=4,
             vials=[
                 {"color": "red"}, {"color": "red"},
                 {"color": "yellow"},
@@ -1125,13 +1156,26 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=24,
             pack="campaign",
             name="Конверт",
-            lives=4,
             vials=[
                 {"color": "green"}, {"color": "green"},
                 {"color": "yellow"}, {"color": "yellow"},
                 {"color": "red"}, {"color": "blue"},
             ],
-            enemies=[{"type": "chase", "x": 360, "y": 620, "vx": 30, "vy": -40, "speed": 72}],
+            enemies=[
+                {"type": "chase", "x": 360, "y": 620, "vx": 30, "vy": -40, "speed": 72},
+                {"type": "chase", "x": 200, "y": 280, "vx": 42, "vy": 34, "speed": 66},
+                {"type": "pingpong", "x": 500, "y": 300, "vx": 68, "vy": 50},
+                {"type": "pingpong", "x": 180, "y": 560, "vx": -62, "vy": 46},
+                {"type": "rover", "x": 520, "y": 620, "vx": -44, "vy": -38},
+                {"type": "turret", "x": 360, "y": 240, "shotInterval": 2600, "bulletSpeed": 130, "initialDelay": 700},
+            ],
+            antiBoosters={
+                "interval": 1600,
+                "types": ["slow", "hurt", "slow"],
+                "persist": True,
+                "maxAlive": 8,
+                "immediate": True,
+            },
             polygons=envelope(),
             constraints={"coverPercent": 35, "winCondition": "all"},
         ),
@@ -1139,7 +1183,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=25,
             pack="campaign",
             name="Крест",
-            lives=4,
             vials=[
                 {"color": "yellow"}, {"color": "yellow"},
                 {"color": "red"}, {"color": "blue"},
@@ -1147,13 +1190,12 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             ],
             enemies=[{"type": "pingpong", "x": 360, "y": 450, "vx": 54, "vy": 42}],
             polygons=plus_field(),
-            constraints={"maxCuts": 5, "winCondition": "vials"},
+            constraints={"maxCuts": 3, "winCondition": "vials"},
         ),
         base(
             id=26,
             pack="campaign",
             name="Мишень",
-            lives=4,
             vials=[
                 {"color": "green"}, {"color": "green"},
                 {"color": "blue"}, {"color": "blue"},
@@ -1162,15 +1204,30 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             enemies=[
                 {"type": "pingpong", "x": 240, "y": 330, "vx": 58, "vy": 42},
                 {"type": "pingpong", "x": 160, "y": 450, "vx": -50, "vy": 38},
+                {
+                    "type": "turret", "x": 334, "y": 424,
+                    "shotInterval": 2400, "bulletSpeed": 140, "initialDelay": 400, "r": 13,
+                },
+                {
+                    "type": "turret", "x": 386, "y": 424,
+                    "shotInterval": 2400, "bulletSpeed": 140, "initialDelay": 700, "r": 13,
+                },
+                {
+                    "type": "turret", "x": 334, "y": 476,
+                    "shotInterval": 2400, "bulletSpeed": 140, "initialDelay": 1000, "r": 13,
+                },
+                {
+                    "type": "turret", "x": 386, "y": 476,
+                    "shotInterval": 2400, "bulletSpeed": 140, "initialDelay": 1300, "r": 13,
+                },
             ],
             polygons=nested_frames(),
-            constraints={"catchEnemies": 2, "winCondition": "all"},
+            constraints={"catchEnemies": 6, "winCondition": "all"},
         ),
         base(
             id=27,
             pack="campaign",
             name="Луна",
-            lives=4,
             vials=[
                 {"color": "yellow"}, {"color": "yellow"}, {"color": "yellow"},
                 {"color": "purple"},
@@ -1184,6 +1241,18 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
                     "type": "turret", "x": 580, "y": 688,
                     "shotInterval": 2100, "bulletSpeed": 150, "initialDelay": 1500,
                 },
+                {
+                    "type": "laser", "x": 200, "y": 180, "angle": 90, "length": 240,
+                    "interval": 3800, "warning": 1100, "activeTime": 650, "phase": 200,
+                },
+                {
+                    "type": "laser", "x": 140, "y": 450, "angle": 0, "length": 200,
+                    "interval": 4000, "warning": 1100, "activeTime": 650, "phase": 1400,
+                },
+                {
+                    "type": "laser", "x": 500, "y": 720, "angle": 270, "length": 220,
+                    "interval": 3900, "warning": 1100, "activeTime": 650, "phase": 2400,
+                },
             ],
             boosters=[{"type": "removeEnemy", "x": 200, "y": 450}],
             antiBoosters={"interval": 7000, "types": ["slow"]},
@@ -1193,7 +1262,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=28,
             pack="campaign",
             name="Соты",
-            lives=4,
             vials=[
                 {"color": "yellow"}, {"color": "yellow"},
                 {"color": "red"}, {"color": "blue"},
@@ -1213,7 +1281,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=29,
             pack="campaign",
             name="Волна",
-            lives=5,
             playerSpeed=230,
             vials=[
                 {"color": "red"}, {"color": "red"}, {"color": "red"},
@@ -1237,7 +1304,6 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=30,
             pack="campaign",
             name="Страж",
-            lives=5,
             playerSpeed=220,
             vials=[
                 {"color": "red"},

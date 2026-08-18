@@ -1,11 +1,11 @@
 var REWARDS = [
-    { id: 'life', type: 'life', label: '+1 жизнь', color: 0xff5c7a },
-    { id: 'removeEnemy', type: 'removeEnemy', label: '−1 враг', color: 0xff8a3d },
-    { id: 'randomBooster', type: 'randomBooster', label: 'Случайный бустер на поле', color: 0x6f6aa8 },
-    { id: 'speedBooster', type: 'specificBooster', booster: 'speed', label: 'Ускорение на поле', color: 0xffd24a },
-    { id: 'shieldBooster', type: 'specificBooster', booster: 'shield', label: 'Щит на поле', color: 0x55eaff },
-    { id: 'slowEnemyBooster', type: 'specificBooster', booster: 'enemySlow', label: 'Заморозка врагов на поле', color: 0x7bc8ff },
-    { id: 'fillVial', type: 'fillVial', label: 'Заполнить случайную корзину', color: 0x3ee6a0 }
+    { id: 'life', type: 'life', label: '+1 жизнь', color: 0xa14b5c },
+    { id: 'removeEnemy', type: 'removeEnemy', label: '−1 враг', color: 0x7a3d52 },
+    { id: 'randomBooster', type: 'randomBooster', label: 'Случайный бустер на поле', color: 0x4e4a78 },
+    { id: 'speedBooster', type: 'specificBooster', booster: 'speed', label: 'Ускорение на поле', color: 0x3d5f86 },
+    { id: 'shieldBooster', type: 'specificBooster', booster: 'shield', label: 'Щит на поле', color: 0x2d6b78 },
+    { id: 'slowEnemyBooster', type: 'specificBooster', booster: 'enemySlow', label: 'Заморозка врагов на поле', color: 0x3a6180 },
+    { id: 'fillVial', type: 'fillVial', label: 'Заполнить случайную корзину', color: 0x2d7a5e }
 ];
 
 export class RewardedAdManager {

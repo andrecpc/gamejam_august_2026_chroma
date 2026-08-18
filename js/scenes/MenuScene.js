@@ -37,13 +37,20 @@
             var H = this.scale.height;
 
             Background.create(this);
+            if (window.AudioManager) {
+                if (AudioManager.stopFinale) AudioManager.stopFinale();
+                if (AudioManager.startMusic) AudioManager.startMusic('normal');
+                if (!GameSettings.get('musicOn') && AudioManager.stopMusic) {
+                    AudioManager.stopMusic();
+                }
+            }
 
             if (window.Paper && Paper.cutTitle) {
-                Paper.cutTitle(this, W / 2, H * 0.115, 'CHROMA', 96);
+                Paper.cutTitle(this, W / 2, H * 0.115, 'PAPERCUT', 78);
             } else {
-                this.add.text(W / 2, H * 0.12, 'CHROMA', {
+                this.add.text(W / 2, H * 0.12, 'PAPERCUT', {
                     fontFamily: 'Arial, sans-serif',
-                    fontSize: '96px',
+                    fontSize: '78px',
                     fontStyle: 'bold',
                     color: '#f7f1e4'
                 }).setOrigin(0.5);
@@ -87,7 +94,7 @@
                 this.scene.start('Settings');
             }.bind(this), { width: 420, height: 92, fontSize: 38, color: 0x475467 }).setDepth(21);
 
-            this.add.text(W / 2, H - 36, 'v1.7.5 paper cut • Phaser 3', {
+            this.add.text(W / 2, H - 36, 'v1.7.10 paper cut • Phaser 3', {
                 fontFamily: 'Arial, sans-serif',
                 fontSize: '24px',
                 color: '#9aa3c4'

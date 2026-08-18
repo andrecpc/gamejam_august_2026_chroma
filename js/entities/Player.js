@@ -1,5 +1,5 @@
 import { dist, polylineLength, trailHitsSelf } from '../utils/Geometry.js';
-import { SkinManager } from '../managers/SkinManager.js?v=1.7.1';
+import { SkinManager } from '../managers/SkinManager.js?v=1.7.6';
 
 function strokeDashedPolyline(g, pts, dash, gap, width, color, alpha) {
     if (!pts || pts.length < 2) return;
@@ -37,6 +37,97 @@ function strokeDashedPolyline(g, pts, dash, gap, width, color, alpha) {
     }
 }
 
+function makeSawDot(scene) {
+    var c = scene.add.container(0, 0);
+    var g = scene.add.graphics();
+    g.fillStyle(0x111111, 0.35);
+    g.fillRoundedRect(-11, -8, 32, 16, 4);
+    g.fillStyle(0x4a2c1a, 1);
+    g.fillRoundedRect(-20, -7, 14, 14, 3);
+    g.fillStyle(0x2a1810, 1);
+    g.fillRect(-17, -3, 8, 6);
+    g.fillStyle(0x6d7480, 1);
+    g.fillRoundedRect(-9, -9, 16, 18, 4);
+    g.fillStyle(0x47a798, 1);
+    g.fillCircle(-2, 0, 3);
+    g.fillStyle(0xd7dde4, 1);
+    g.fillRoundedRect(5, -5, 22, 10, 2);
+    g.fillStyle(0x5c6370, 1);
+    var i;
+    for (i = 0; i < 6; i++) {
+        var tx = 7 + i * 3.4;
+        g.fillTriangle(tx, -5, tx + 1.7, -10, tx + 3.4, -5);
+        g.fillTriangle(tx, 5, tx + 1.7, 10, tx + 3.4, 5);
+    }
+    c.add(g);
+    return c;
+}
+
+function makeSaberDot(scene) {
+    var c = scene.add.container(0, 0);
+    var g = scene.add.graphics();
+    g.fillStyle(0x48f0a0, 0.3);
+    g.fillRoundedRect(2, -8, 34, 16, 7);
+    g.fillStyle(0x7dffc4, 1);
+    g.fillRoundedRect(5, -3.5, 30, 7, 3);
+    g.fillStyle(0xf3ead8, 0.85);
+    g.fillRoundedRect(6, -1.4, 26, 2.8, 2);
+    g.fillStyle(0x2a241c, 1);
+    g.fillRoundedRect(-14, -5, 18, 10, 2);
+    g.fillStyle(0x8a7a68, 1);
+    g.fillRect(-9, -6, 3, 12);
+    g.fillStyle(0xd8cbb4, 1);
+    g.fillCircle(3, 0, 2.4);
+    c.add(g);
+    return c;
+}
+
+function strokePolyline(g, pts, width, color, alpha) {
+    if (!pts || pts.length < 2) return;
+    g.lineStyle(width, color, alpha);
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y);
+    var i;
+    for (i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    g.strokePath();
+}
+
+export function makeUnicornDot(scene) {
+    var c = scene.add.container(0, 0);
+    var g = scene.add.graphics();
+    g.fillStyle(0xfff1a8, 1);
+    g.fillTriangle(12, -4, 36, 0, 12, 4);
+    g.fillStyle(0xffd24a, 1);
+    g.fillTriangle(14, -2, 32, 0, 14, 2);
+    g.lineStyle(2, 0x3d2a22, 0.85);
+    g.beginPath();
+    g.moveTo(12, -4);
+    g.lineTo(36, 0);
+    g.lineTo(12, 4);
+    g.closePath();
+    g.strokePath();
+    g.fillStyle(0xfff6ea, 1);
+    g.fillCircle(0, 2, 13);
+    g.lineStyle(3, 0x3d2a22, 1);
+    g.strokeCircle(0, 2, 13);
+    g.fillStyle(0xffd0ea, 1);
+    g.fillTriangle(-2, -11, 7, -8, 2, -2);
+    g.lineStyle(2, 0x3d2a22, 0.9);
+    g.strokeTriangle(-2, -11, 7, -8, 2, -2);
+    g.fillStyle(0xff7ad9, 1);
+    g.fillCircle(-9, -5, 5);
+    g.fillStyle(0x7dffc4, 1);
+    g.fillCircle(-12, 2, 4.5);
+    g.fillStyle(0x4a9fff, 1);
+    g.fillCircle(-9, 9, 4);
+    g.fillStyle(0x1a120c, 1);
+    g.fillCircle(5, 0, 2.3);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(5.8, -0.7, 0.9);
+    c.add(g);
+    return c;
+}
+
 export class Player {
     constructor(scene, x, y, cfg) {
         this.scene = scene;
@@ -57,13 +148,14 @@ export class Player {
         this.facing = -Math.PI / 2;
 
         var isCircle = this.skin.shape === 'circle';
+        var glowR = isCircle ? 20 : (this.skin.shape === 'unicorn' ? 22 : 18);
         this.glow = scene.add.circle(
             x, y,
-            isCircle ? 20 : (this.skin.shape === 'wisp' ? 26 : 18),
+            glowR,
             isCircle ? 0x111111 : this.skin.glowColor,
             isCircle ? 0.28 : 0.18
         );
-        if (!isCircle) {
+        if (!isCircle && this.skin.shape !== 'unicorn') {
             this.glow.setBlendMode(Phaser.BlendModes.ADD);
         }
         this.glow.setDepth(8);
@@ -76,6 +168,7 @@ export class Player {
         this.shieldRing.setVisible(false);
         this.trailGfx = scene.add.graphics();
         this.trailGfx.setDepth(7);
+        this.wake = [];
     }
 
     _createDot(scene, x, y) {
@@ -91,6 +184,15 @@ export class Player {
         } else if (this.skin.shape === 'hex') {
             dot = scene.add.star(x, y, 6, r * 0.72, r * 1.22, this.skin.coreColor);
             dot.setStrokeStyle(3, this.skin.strokeColor, 1);
+        } else if (this.skin.shape === 'saw') {
+            dot = makeSawDot(scene);
+            dot.setPosition(x, y);
+        } else if (this.skin.shape === 'saber') {
+            dot = makeSaberDot(scene);
+            dot.setPosition(x, y);
+        } else if (this.skin.shape === 'unicorn') {
+            dot = makeUnicornDot(scene);
+            dot.setPosition(x, y);
         } else if (this.skin.shape === 'comet') {
             dot = scene.add.triangle(
                 x, y,
@@ -115,6 +217,25 @@ export class Player {
             );
         }
         return dot;
+    }
+
+    copyVisual(scene) {
+        var wrap = scene.add.container(this.x, this.y);
+        var isCircle = this.skin.shape === 'circle';
+        var glowR = isCircle ? 20 : (this.skin.shape === 'unicorn' ? 22 : 18);
+        var glow = scene.add.circle(
+            0, 0,
+            glowR,
+            isCircle ? 0x111111 : this.skin.glowColor,
+            isCircle ? 0.28 : 0.18
+        );
+        if (!isCircle && this.skin.shape !== 'unicorn') {
+            glow.setBlendMode(Phaser.BlendModes.ADD);
+        }
+        wrap.add(glow);
+        wrap.add(this._createDot(scene, 0, 0));
+        wrap.setDepth(95);
+        return wrap;
     }
 
     hitRadius() {
@@ -260,6 +381,24 @@ export class Player {
         }
     }
 
+    _updateWake() {
+        if (!this.skin || !this.skin.rainbow) {
+            this.wake = [];
+            return;
+        }
+        var moving = this.scene && this.scene.dir &&
+            (this.scene.dir.x || this.scene.dir.y);
+        if (moving) {
+            var last = this.wake.length ? this.wake[this.wake.length - 1] : null;
+            if (!last || dist(last.x, last.y, this.x, this.y) >= 3) {
+                this.wake.push({ x: this.x, y: this.y });
+            }
+            if (this.wake.length > 13) this.wake.shift();
+        } else if (this.wake.length) {
+            this.wake.shift();
+        }
+    }
+
     igniteTrail(atIndex) {
         if (this.flameIndex < 0) this.flameIndex = atIndex;
         else this.flameIndex = Math.max(this.flameIndex, atIndex);
@@ -281,6 +420,10 @@ export class Player {
         this.dot.setPosition(this.x, this.y);
         this.glow.setPosition(this.x, this.y);
         this.shieldRing.setPosition(this.x, this.y);
+        if (this.skin.shape === 'saw' || this.skin.shape === 'saber' ||
+            this.skin.shape === 'comet' || this.skin.shape === 'unicorn') {
+            this.dot.setRotation(this.facing);
+        }
         if (GameSettings.reducedMotion()) {
             this.glow.setScale(1);
             this.dot.setScale(1);
@@ -288,11 +431,11 @@ export class Player {
         }
         var pulse = Math.sin(this.scene.time.now / 105);
         this.glow.setScale(1.05 + pulse * 0.12);
-        this.dot.setScale(this.drawing ? 1.04 + pulse * 0.05 : 1);
+        if (this.skin.shape !== 'unicorn' && this.skin.shape !== 'saw' && this.skin.shape !== 'saber') {
+            this.dot.setScale(this.drawing ? 1.04 + pulse * 0.05 : 1);
+        }
         if (this.skin.shape === 'star' || this.skin.shape === 'hex') {
             this.dot.setAngle((this.scene.time.now / 18) % 360);
-        } else if (this.skin.shape === 'comet') {
-            this.dot.setRotation(this.facing + Math.PI / 2);
         }
     }
 
@@ -308,11 +451,22 @@ export class Player {
     }
 
     _drawTrail() {
+        this._updateWake();
         var g = this.trailGfx;
         g.clear();
+        var rainbow = this.skin && this.skin.rainbow;
+        var bands = [0xff3b5c, 0xff8a3d, 0xffd24a, 0x3ee6a0, 0x4a9fff, 0xb07cff];
+        if (this.trail.length >= 2) {
+            strokeDashedPolyline(g, this.trail, 16, 10, 9, 0x1a120c, 0.7);
+            strokeDashedPolyline(g, this.trail, 16, 10, 6, 0xffffff, 1);
+        }
+        if (rainbow && this.wake.length >= 2) {
+            var w;
+            for (w = 0; w < bands.length; w++) {
+                strokePolyline(g, this.wake, 14 - w * 1.8, bands[w], 0.92);
+            }
+        }
         if (this.trail.length < 2) return;
-        strokeDashedPolyline(g, this.trail, 16, 10, 9, 0x1a120c, 0.7);
-        strokeDashedPolyline(g, this.trail, 16, 10, 6, 0xffffff, 1);
 
         if (this.flameIndex >= 0) {
             var fi = Math.min(this.trail.length - 1, Math.floor(this.flameIndex));

@@ -14,42 +14,43 @@ var SKINS = [
     },
     {
         id: 'comet',
-        name: 'Комета',
-        description: 'Хвостатый клин, смотрит туда, куда едешь',
+        name: 'Бензопила',
+        description: 'Пила смотрит туда, куда едешь',
         requiredWins: 10,
-        shape: 'comet',
-        coreColor: 0x7dfff1,
-        strokeColor: 0xe8ffff,
-        glowColor: 0x2ce6d0,
-        trailColor: 0x7dfff1,
+        shape: 'saw',
+        coreColor: 0x6d7480,
+        strokeColor: 0xd7dde4,
+        glowColor: 0x47a798,
+        trailColor: 0xc5c9ce,
         dangerColor: 0xff4f83,
         trailWidth: 6
     },
     {
         id: 'pulsar',
-        name: 'Пульсар',
-        description: 'Шестигранник, который медленно крутится',
+        name: 'Меч джедая',
+        description: 'Светящийся клинок по курсу движения',
         requiredWins: 20,
-        shape: 'hex',
-        coreColor: 0xff8a3d,
-        strokeColor: 0xfff0b5,
-        glowColor: 0xff5c2c,
-        trailColor: 0xffc25c,
+        shape: 'saber',
+        coreColor: 0x48f0a0,
+        strokeColor: 0xf3ead8,
+        glowColor: 0x2ce6a0,
+        trailColor: 0x7dffc4,
         dangerColor: 0xff143d,
         trailWidth: 5
     },
     {
         id: 'wisp',
-        name: 'Блуждающий огонь',
-        description: 'Полупрозрачный дух с широким следом',
+        name: 'Единорог',
+        description: 'Рог смотрит по курсу, сзади короткий радужный след',
         requiredWins: 30,
-        shape: 'wisp',
-        coreColor: 0xb07cff,
-        strokeColor: 0xf2deff,
-        glowColor: 0xdabaff,
-        trailColor: 0xe4c7ff,
+        shape: 'unicorn',
+        rainbow: true,
+        coreColor: 0xff7ad9,
+        strokeColor: 0xffffff,
+        glowColor: 0xffb0e8,
+        trailColor: 0xff7ad9,
         dangerColor: 0xff356d,
-        trailWidth: 7
+        trailWidth: 8
     }
 ];
 
@@ -88,3 +89,4 @@ export var SkinManager = {
         return true;
     }
 };
+

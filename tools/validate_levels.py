@@ -13,7 +13,7 @@ from pathlib import Path
 
 ENEMY_TYPES = {"pingpong", "rover", "chase", "turret", "laser", "thief"}
 BOOSTER_TYPES = {
-    "speed", "slow", "life", "shield", "enemySlow", "removeEnemy", "mystery"
+    "speed", "slow", "life", "shield", "enemySlow", "removeEnemy", "mystery", "hurt"
 }
 WIN_CONDITIONS = {"vials", "coverage", "all", "boss", "catch"}
 BOSS_TYPES = {"bulletHell", "fieldBoss", "colorBoss"}

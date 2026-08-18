@@ -388,6 +388,8 @@
         basketText: function (s) {
             if (!s) return s;
             return String(s)
+                .replace(/Пробирок/g, 'Корзин')
+                .replace(/пробирок/g, 'корзин')
                 .replace(/Пробирку/g, 'Корзину')
                 .replace(/пробирку/g, 'корзину')
                 .replace(/Пробирки/g, 'Корзины')
@@ -475,9 +477,9 @@
                 body = points;
             }
             g.fillStyle(0x061428, 0.2);
-            fillPts(g, shiftPts(rim, 18, 24));
+            fillPts(g, shiftPts(rim, 8, 11));
             g.fillStyle(0x061428, 0.48);
-            fillPts(g, shiftPts(body, 10, 14));
+            fillPts(g, shiftPts(body, 5, 7));
             g.fillStyle(0xf4ead8, 1);
             fillPts(g, rim);
             deckleWhiskers(g, rim, seed);
@@ -735,8 +737,9 @@
         },
 
         cutTitle: function (scene, x, y, word, fontSize) {
-            this.addStar(scene, x - 210, y + 8, 16, 21, 5);
-            this.addStar(scene, x + 198, y - 6, 12, 22, 5);
+            var half = Math.min(300, Math.max(180, String(word).length * fontSize * 0.34));
+            this.addStar(scene, x - half, y + 8, 16, 21, 5);
+            this.addStar(scene, x + half * 0.94, y - 6, 12, 22, 5);
             function titleText(tx, ty, color, depth, alpha) {
                 var t = scene.add.text(tx, ty, word, {
                     fontFamily: 'Arial, sans-serif',

@@ -1,10 +1,11 @@
 import {
     difference, intersection, polygonArea, pointInPolygon, splitByTrail,
     unionPolys, offsetPolys, isSliver, bufferPolyline, tidyLight, simplifyPoly
-} from '../utils/ClipperAdapter.js';
+} from '../utils/ClipperAdapter.js?v=1.7.7';
 import {
-    extendEnds, hexToInt, nearestOnRing, polylineLength, ringChain, ringChainBack
-} from '../utils/Geometry.js';
+    extendEnds, hexToInt, nearestOnRing, pointToSegmentDist,
+    polylineLength, ringChain, ringChainBack
+} from '../utils/Geometry.js?v=1.7.7';
 
 var SLIVER_AREA = 180;
 var MAX_CAPTURE = 0.82;
@@ -229,12 +230,13 @@ export class FieldManager {
         // текущий хвост игрока, иначе все остальные острова ошибочно
         // попадут в captured.
         var active = this._componentForTrail(unclaimed, trail);
+        if (!active) active = this._colorPolyForTrail(trail);
         if (!active) return fail('no-split');
         var working = [active];
         var unclaimedArea = polygonArea(active);
         var i;
 
-        var extended = extendEnds(trail, 40);
+        var extended = extendEnds(trail, 56);
         var split = this._splitUntilSevered(working, extended);
         var parts = (split.parts || []).filter(function (p) {
             return polygonArea(p) >= SLIVER_AREA;
@@ -246,6 +248,22 @@ export class FieldManager {
             if (looped) {
                 parts = looped.parts;
                 buffer = looped.buffer || buffer;
+            }
+        }
+
+        if (parts.length < 2) {
+            var colorPoly = this._colorPolyForTrail(trail);
+            if (colorPoly) {
+                split = this._splitUntilSevered([colorPoly], extended);
+                var colorParts = (split.parts || []).filter(function (p) {
+                    return polygonArea(p) >= SLIVER_AREA;
+                });
+                if (colorParts.length >= 2) {
+                    parts = colorParts;
+                    buffer = split.buffer || buffer;
+                    working = [colorPoly];
+                    unclaimedArea = polygonArea(colorPoly);
+                }
             }
         }
 
@@ -320,12 +338,7 @@ export class FieldManager {
         var best = null;
         var bestHits = 0;
         for (var i = 0; i < components.length; i++) {
-            var hits = 0;
-            for (var j = 1; j < trail.length - 1; j++) {
-                if (pointInPolygon(trail[j].x, trail[j].y, components[i])) {
-                    hits++;
-                }
-            }
+            var hits = this._trailHitsPoly(trail, components[i]);
             if (hits > bestHits) {
                 bestHits = hits;
                 best = components[i];
@@ -334,12 +347,52 @@ export class FieldManager {
         return best;
     }
 
+    _colorPolyForTrail(trail) {
+        var best = null;
+        var bestHits = 0;
+        for (var i = 0; i < this.colors.length; i++) {
+            var hits = this._trailHitsPoly(trail, this.colors[i].points);
+            if (hits > bestHits) {
+                bestHits = hits;
+                best = this.colors[i].points;
+            }
+        }
+        return best;
+    }
+
+    _trailHitsPoly(trail, poly) {
+        if (!trail || !poly) return 0;
+        var hits = 0;
+        for (var j = 1; j < trail.length - 1; j++) {
+            if (pointInPolygon(trail[j].x, trail[j].y, poly)) hits += 2;
+            else if (this._nearPoly(trail[j].x, trail[j].y, poly, 12)) hits += 1;
+        }
+        return hits;
+    }
+
+    _nearPoly(x, y, poly, pad) {
+        for (var i = 0; i < poly.length; i++) {
+            var a = poly[i];
+            var b = poly[(i + 1) % poly.length];
+            if (pointToSegmentDist(x, y, a.x, a.y, b.x, b.y) <= pad) return true;
+        }
+        return false;
+    }
+
     _splitUntilSevered(unclaimed, trail) {
-        var widths = [4, 6, 8, 11, 15];
+        var widths = [3, 5, 7, 10, 14, 20];
         var last = { parts: unclaimed.slice(), buffer: [] };
-        for (var i = 0; i < widths.length; i++) {
-            last = splitByTrail(unclaimed, trail, widths[i]);
+        var i;
+        for (i = 0; i < widths.length; i++) {
+            last = splitByTrail(unclaimed, trail, widths[i], true);
             var solid = (last.parts || []).filter(function (p) {
+                return polygonArea(p) >= SLIVER_AREA;
+            });
+            if (solid.length >= 2) return last;
+        }
+        for (i = 0; i < widths.length; i++) {
+            last = splitByTrail(unclaimed, trail, widths[i], false);
+            solid = (last.parts || []).filter(function (p) {
                 return polygonArea(p) >= SLIVER_AREA;
             });
             if (solid.length >= 2) return last;
@@ -352,7 +405,7 @@ export class FieldManager {
         if (!ring || ring.length < 4) return null;
         var start = nearestOnRing(ring, trail[0]);
         var end = nearestOnRing(ring, trail[trail.length - 1]);
-        if (start.d > 48 || end.d > 48) return null;
+        if (start.d > 64 || end.d > 64) return null;
 
         var around1 = ringChain(ring, end, start);
         var around2 = ringChainBack(ring, end, start);
@@ -630,32 +683,27 @@ export class FieldManager {
         var order = [];
         var i;
         for (i = 0; i < this.colors.length; i++) {
-            var pts = this.colors[i].points;
-            var sx = 0;
-            var sy = 0;
-            var j;
-            for (j = 0; j < pts.length; j++) {
-                sx += pts[j].x;
-                sy += pts[j].y;
-            }
             order.push({
                 i: i,
-                s: sx / pts.length + sy / pts.length
+                a: polygonArea(this.colors[i].points)
             });
         }
-        order.sort(function (a, b) { return b.s - a.s; });
-        for (i = 0; i < order.length; i++) {
+        order.sort(function (a, b) { return b.a - a.a; });
+        var n = order.length;
+        for (i = 0; i < this.colorLayers.length; i++) this.colorLayers[i].clear();
+        for (i = 0; i < n; i++) {
             var col = this.colors[order[i].i];
             var tint = hexToInt(this.palette[col.color] || 0x888888);
-            var g = this.colorLayers[i];
-            g.clear();
-            g.setDepth(3 + i * 0.25);
+            var g = this.colorLayers[order[i].i];
+            g.setDepth(0.85 + (n <= 1 ? 0 : i / (n - 1)) * 0.7);
             if (window.Paper && Paper.drawColorPiece) {
                 var seed = 0x9e3779b9;
-                var name = col.color || '';
+                var key = (col.id || '') + '|' + (col.color || '');
+                var pts0 = col.points[0] || { x: 0, y: 0 };
+                key += '|' + Math.round(pts0.x) + ',' + Math.round(pts0.y);
                 var k;
-                for (k = 0; k < name.length; k++) {
-                    seed = Math.imul(seed ^ name.charCodeAt(k), 16777619) >>> 0;
+                for (k = 0; k < key.length; k++) {
+                    seed = Math.imul(seed ^ key.charCodeAt(k), 16777619) >>> 0;
                 }
                 Paper.drawColorPiece(g, col.points, tint, seed);
             } else {
@@ -678,7 +726,7 @@ export class FieldManager {
             b.h,
             key
         );
-        this.colorGrain.setDepth(5);
+        this.colorGrain.setDepth(1.78);
         if (key === 'paper-kraft') {
             this.colorGrain.setBlendMode(Phaser.BlendModes.MULTIPLY);
             this.colorGrain.setAlpha(0.32);

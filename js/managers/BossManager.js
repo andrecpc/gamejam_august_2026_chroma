@@ -165,6 +165,7 @@ export class BossManager {
             this.colorBars.push({
                 color: color,
                 health: 1,
+                startArea: startArea,
                 quota: Math.max(800, startArea * cutPercent),
                 tint: hexToInt(this.palette[color] || 0xffffff)
             });
@@ -290,6 +291,7 @@ export class BossManager {
         if (!this.active || this.defeated) return;
         if (this.type === 'colorBoss') {
             this._moveColorBoss(dt);
+            this._syncColorBarsFromField();
             var colorNow = this.scene.time.now;
             if (colorNow >= this.nextAttackAt) {
                 this._attack(player);
@@ -463,6 +465,45 @@ export class BossManager {
         }
     }
 
+    _syncColorBarsFromField() {
+        if (this.type !== 'colorBoss' || this.defeated) return;
+        var field = this.scene.field;
+        if (!field || !field.colorArea) return;
+        var changed = false;
+        var emptied = [];
+        var i;
+        for (i = 0; i < this.colorBars.length; i++) {
+            var bar = this.colorBars[i];
+            if (bar.health <= 0) continue;
+            var left = field.colorArea(bar.color);
+            if (left > 280) continue;
+            bar.health = 0;
+            changed = true;
+            emptied.push(bar);
+        }
+        if (!changed) return;
+        this.health = 0;
+        for (i = 0; i < this.colorBars.length; i++) this.health += this.colorBars[i].health;
+        this._drawColorRings();
+        for (i = 0; i < emptied.length; i++) {
+            this.scene.game.events.emit('game:enemy-action', {
+                type: 'colorBoss',
+                label: COLOR_NAMES[emptied[i].color] + ' щит сбит!'
+            });
+        }
+        this._emitStatus();
+        if (this.health <= 0.02) {
+            this.health = 0;
+            this.defeated = true;
+            this._defeatEffect();
+            if (this.projectiles) {
+                var children = this.projectiles.getChildren();
+                for (i = 0; i < children.length; i++) children[i].disable();
+            }
+            this.scene.game.events.emit('game:boss-defeated');
+        }
+    }
+
     onColorCuts(areas) {
         if (!this.active || this.defeated || this.type !== 'colorBoss' || !areas) return;
         var hit = false;
@@ -479,7 +520,10 @@ export class BossManager {
                 emptied.push(bar);
             }
         }
-        if (!hit) return;
+        if (!hit) {
+            this._syncColorBarsFromField();
+            return;
+        }
         this.health = 0;
         for (i = 0; i < this.colorBars.length; i++) this.health += this.colorBars[i].health;
         this._drawColorRings();
@@ -508,6 +552,7 @@ export class BossManager {
                 yoyo: true
             });
         }
+        this._syncColorBarsFromField();
     }
 
     onPlayerClaim(polys) {
@@ -667,7 +712,7 @@ export class BossManager {
         }
     }
 
-    hitsPlayer(player) {
+    hitsPlayer(player, consume) {
         if (!this.active || this.defeated || !player) return false;
         if (this.type === 'colorBoss' &&
             dist(player.x, player.y, this.x, this.y) <=
@@ -681,7 +726,7 @@ export class BossManager {
             if (!bullet.active || bullet.owner !== 'boss') continue;
             if (dist(player.x, player.y, bullet.x, bullet.y) <=
                 player.hitRadius() + bullet.radius) {
-                bullet.disable();
+                if (consume !== false) bullet.disable();
                 return true;
             }
         }

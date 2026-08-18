@@ -177,7 +177,7 @@ export class EnemyManager {
         enemy.drainPath = [{ x: enemy.x, y: enemy.y }];
     }
 
-    hitsPlayer(player) {
+    hitsPlayer(player, consume) {
         if (!player) return false;
         if (this.laserHitsPlayer) return true;
 
@@ -187,7 +187,7 @@ export class EnemyManager {
             if (!bullet.active) continue;
             if (dist(player.x, player.y, bullet.x, bullet.y) <=
                 player.hitRadius() + bullet.radius) {
-                bullet.disable();
+                if (consume !== false) bullet.disable();
                 return true;
             }
         }

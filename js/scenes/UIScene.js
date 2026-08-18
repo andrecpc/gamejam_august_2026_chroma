@@ -39,14 +39,24 @@ export class UIScene extends Phaser.Scene {
             fontFamily: 'Arial, sans-serif', fontSize: '30px', color: '#ff5c7a'
         }).setDepth(34).setVisible(false);
         this.hearts = [];
-        if (window.Paper && Paper.addHeart) {
-            for (var hi = 0; hi < 3; hi++) {
-                this.hearts.push(Paper.addHeart(this, 68 + hi * 46, 90, 22, 201 + hi, 34));
+        this.lastLives = -1;
+        for (var hi = 0; hi < 5; hi++) {
+            var wrap = this.add.container(62 + hi * 48, 90).setDepth(34);
+            if (window.Paper && Paper.drawHeart) {
+                var hg = this.add.graphics();
+                Paper.drawHeart(hg, 0, 0, 20, 0xde3449, 201 + hi);
+                wrap.add(hg);
+            } else {
+                wrap.add(this.add.text(0, 0, '❤', {
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: '28px',
+                    color: '#ff5c7a'
+                }).setOrigin(0.5));
             }
-        } else {
-            this.livesText.setVisible(true).setText('❤ ❤ ❤');
+            wrap.setVisible(false);
+            this.hearts.push(wrap);
         }
-            this.effectsText = this.add.text(40, 116, '', {
+        this.effectsText = this.add.text(40, 116, '', {
             fontFamily: 'Arial, sans-serif',
             fontSize: '20px',
             color: '#f6efe4',
@@ -81,6 +91,7 @@ export class UIScene extends Phaser.Scene {
             .setDepth(89)
             .setVisible(false);
         this.stickGfx = this.add.graphics().setDepth(86);
+        this.playerHud = null;
 
         this.vialSlots = [];
         var slotY = H - 210;
@@ -94,18 +105,18 @@ export class UIScene extends Phaser.Scene {
             hintText = 'заполни корзины, нарезая цвета';
         }
         if (window.Paper && Paper.basketText) hintText = Paper.basketText(hintText);
-        this.hint = this.add.text(W / 2, H - 34, hintText, {
+        this.hint = this.add.text(28, H - 22, hintText, {
             fontFamily: 'Arial, sans-serif',
-            fontSize: '22px',
+            fontSize: '18px',
             color: '#d7c4a8',
-            align: 'center',
-            wordWrap: { width: 480 }
-        }).setOrigin(0.5);
+            align: 'left',
+            wordWrap: { width: 430 }
+        }).setOrigin(0, 1);
         if (!hintText) this.hint.setVisible(false);
 
-        this.adStub = new UIButton(this, W - 130, H - 70, '📺', function () {
+        this.adStub = new UIButton(this, W - 108, H - 96, '📺', function () {
             self._openRewardMenu();
-        }, { width: 88, height: 72, fontSize: 32, color: 0x3a3f6a });
+        }, { width: 128, height: 108, fontSize: 52, color: 0x2aa384 });
 
         this._flights = {};
         this._pendingSnap = null;
@@ -159,6 +170,10 @@ export class UIScene extends Phaser.Scene {
             this.hearts = [];
         }
         (this.vialSlots || []).forEach(function (v) { v.destroy(); });
+        if (this.playerHud) {
+            this.playerHud.destroy();
+            this.playerHud = null;
+        }
     }
 
     _onReady(data) {
@@ -184,22 +199,22 @@ export class UIScene extends Phaser.Scene {
         var copy = (window.Paper && Paper.basketText) ? Paper.basketText(data.text) : data.text;
         var text = this.add.text(0, 0, copy, {
             fontFamily: 'Arial, sans-serif',
-            fontSize: '26px',
+            fontSize: '20px',
             fontStyle: 'bold',
             color: '#3d2a22',
             align: 'center',
-            wordWrap: { width: 560 }
+            wordWrap: { width: 460 }
         }).setOrigin(0.5);
-        var cardH = Math.max(150, text.height + 48);
-        var card = this.add.container(W / 2, 210).setDepth(80);
+        var cardH = Math.min(168, Math.max(96, text.height + 28));
+        var card = this.add.container(W / 2, 150).setDepth(80);
         var bg = this.add.graphics();
         if (window.Paper && Paper.drawScrap) {
-            Paper.drawScrap(bg, 0, 0, 620, cardH + 24, 0xe6d8c0, 81, {
+            Paper.drawScrap(bg, 0, 0, 540, cardH + 16, 0xe6d8c0, 81, {
                 jag: 8, shadowX: 12, shadowY: 16, fibers: true
             });
         } else {
             bg.fillStyle(0xe6d8c0, 1);
-            bg.fillRoundedRect(-310, -cardH / 2, 620, cardH, 18);
+            bg.fillRoundedRect(-270, -cardH / 2, 540, cardH, 18);
         }
         card.add([bg, text]);
         card.setAlpha(0);
@@ -208,7 +223,7 @@ export class UIScene extends Phaser.Scene {
         this.tweens.add({
             targets: card,
             alpha: 1,
-            y: 190,
+            y: 142,
             duration: GameSettings.reducedMotion() ? 80 : 220,
             ease: 'Quad.easeOut'
         });
@@ -219,6 +234,9 @@ export class UIScene extends Phaser.Scene {
         if (this.playerMark) this.playerMark.setVisible(false);
         if (this.playerHalo) this.playerHalo.setVisible(false);
         if (this.stickGfx) this.stickGfx.clear();
+        var game = this.scene.get('Game');
+        if (game && game._lockStickUntilRelease) game._lockStickUntilRelease();
+        else if (game && game._resetStick) game._resetStick();
     }
 
     _onTutorialDismiss(data) {
@@ -252,30 +270,41 @@ export class UIScene extends Phaser.Scene {
     }
 
     _onLives(data) {
-        var n = data.lives || 0;
+        var n = (data && typeof data.lives === 'number') ? data.lives : 0;
         var i;
         if (this.hearts && this.hearts.length) {
             for (i = 0; i < this.hearts.length; i++) {
-                this.hearts[i].setVisible(i < n);
+                var heart = this.hearts[i];
+                var on = i < n;
+                this.tweens.killTweensOf(heart);
+                heart.setScale(1);
+                heart.setAngle(0);
+                heart.setAlpha(on ? 1 : 0);
+                heart.setVisible(on);
             }
+            this.livesText.setVisible(false);
         } else {
             var s = '';
             for (i = 0; i < n; i++) s += '❤ ';
-            this.livesText.setText(s.trim() || '—');
+            this.livesText.setVisible(true).setText(s.trim() || '—');
         }
-        var pulse = (this.hearts && this.hearts.length)
-            ? this.hearts[Math.max(0, Math.min(this.hearts.length - 1, n < (this.lastLives || n) ? n : n - 1))]
-            : this.livesText;
-        if (this.lastLives !== undefined && this.lastLives !== n && pulse) {
-            this.tweens.killTweensOf(pulse);
-            pulse.setScale(1.28).setAngle(n < this.lastLives ? -8 : 8);
-            this.tweens.add({
-                targets: pulse,
-                scale: 1,
-                angle: 0,
-                duration: 360,
-                ease: 'Back.easeOut'
-            });
+        if (this.lastLives >= 0 && this.lastLives !== n) {
+            var pulseIdx = n < this.lastLives
+                ? Math.max(0, n - 1)
+                : Math.max(0, n - 1);
+            var pulse = (this.hearts && this.hearts[pulseIdx] && this.hearts[pulseIdx].visible)
+                ? this.hearts[pulseIdx]
+                : this.livesText;
+            if (pulse && pulse.visible) {
+                pulse.setScale(1.28);
+                this.tweens.add({
+                    targets: pulse,
+                    scale: 1,
+                    angle: 0,
+                    duration: 360,
+                    ease: 'Back.easeOut'
+                });
+            }
         }
         this.lastLives = n;
     }
@@ -315,38 +344,50 @@ export class UIScene extends Phaser.Scene {
 
     _onBoosterPicked(data) {
         var W = this.scale.width;
-        var text = this.add.text(W / 2, 190, data.label, {
-            fontFamily: 'Arial, sans-serif',
-            fontSize: '30px',
-            fontStyle: 'bold',
-            color: '#ffffff',
-            stroke: '#17203c',
-            strokeThickness: 5
-        }).setOrigin(0.5).setDepth(40);
+        var H = this.scale.height;
+        var isHurt = data && data.type === 'hurt';
+        var text = this.add.text(
+            W / 2,
+            isHurt ? H * 0.38 : 190,
+            isHurt ? '−1 ЖИЗНЬ' : data.label,
+            {
+                fontFamily: 'Arial, sans-serif',
+                fontSize: isHurt ? '44px' : '30px',
+                fontStyle: 'bold',
+                color: isHurt ? '#ff6b7a' : '#ffffff',
+                stroke: '#17203c',
+                strokeThickness: isHurt ? 8 : 5
+            }
+        ).setOrigin(0.5).setDepth(40);
         this.tweens.add({
             targets: text,
-            y: 155,
+            y: isHurt ? H * 0.38 - 24 : 155,
             alpha: 0,
-            duration: 850,
+            delay: isHurt ? 2200 : 200,
+            duration: isHurt ? 500 : 650,
             onComplete: function () { text.destroy(); }
         });
     }
 
     _onEnemyAction(data) {
         var W = this.scale.width;
+        var hold = (data && data.hold) || 1400;
         var text = this.add.text(W / 2, 220, data.label, {
             fontFamily: 'Arial, sans-serif',
             fontSize: '27px',
             fontStyle: 'bold',
             color: '#ffcf5c',
             stroke: '#17203c',
-            strokeThickness: 5
+            strokeThickness: 5,
+            align: 'center',
+            wordWrap: { width: 640 }
         }).setOrigin(0.5).setDepth(40);
         this.tweens.add({
             targets: text,
             y: 180,
             alpha: 0,
-            duration: 900,
+            delay: hold,
+            duration: 700,
             onComplete: function () { text.destroy(); }
         });
     }
@@ -787,6 +828,7 @@ export class UIScene extends Phaser.Scene {
             !this.scene.isActive('Pause')) {
             this.scene.resume('Game');
         }
+        if (game && game._lockStickUntilRelease) game._lockStickUntilRelease();
     }
 
     _onRewardGranted(data) {
@@ -820,16 +862,33 @@ export class UIScene extends Phaser.Scene {
         var game = this.scene.get('Game');
         var p = game && game.player;
         var show = !!(p && !game.gameOver);
-        var isCircle = show && (!p.skin || p.skin.shape === 'circle');
-        var needMark = show && !this.endOverlay && (isCircle || p.y < 155);
-        if (this.playerMark) this.playerMark.setVisible(needMark);
-        if (this.playerHalo) this.playerHalo.setVisible(needMark);
-        if (needMark) {
+        this._syncPlayerHud(p, show);
+    }
+
+    _syncPlayerHud(p, show) {
+        var isCircle = !!(p && p.skin && p.skin.shape === 'circle');
+        var underHud = !!(show && p && p.y < 190);
+        if (this.playerMark) this.playerMark.setVisible(show && isCircle);
+        if (this.playerHalo) this.playerHalo.setVisible(show && isCircle);
+        if (show && isCircle) {
             this.playerMark.setPosition(p.x, p.y);
             this.playerHalo.setPosition(p.x, p.y);
         }
         if (p && p.dot) p.dot.setVisible(show && !isCircle);
         if (p && p.glow) p.glow.setVisible(show && !isCircle);
+
+        var needHud = show && !isCircle && underHud && !this.endOverlay;
+        if (!needHud) {
+            if (this.playerHud) this.playerHud.setVisible(false);
+            return;
+        }
+        if (!this.playerHud && p.copyVisual) {
+            this.playerHud = p.copyVisual(this);
+        }
+        if (!this.playerHud) return;
+        this.playerHud.setVisible(true);
+        this.playerHud.setPosition(p.x, p.y);
+        this.playerHud.setRotation(p.facing || 0);
     }
 
     _pauseButton(x, y) {
@@ -909,26 +968,28 @@ export class UIScene extends Phaser.Scene {
         var overlay = this.add.container(0, 0).setDepth(210).setAlpha(0);
         this.endOverlay = overlay;
 
+        var scrapW = extra.finale ? 620 : (extra.subtitle ? 600 : 560);
+        var scrapH = extra.finale ? 220 : (extra.subtitle ? 170 : 140);
         var scrap = this.add.graphics();
         if (window.Paper && Paper.drawScrap) {
             Paper.drawScrap(
                 scrap,
                 0,
                 0,
-                extra.subtitle ? 600 : 560,
-                extra.subtitle ? 170 : 140,
+                scrapW,
+                scrapH,
                 0xe6d8c0,
                 77,
                 { jag: 9, shadowX: 16, shadowY: 22, fibers: 'light' }
             );
         } else {
             scrap.fillStyle(0xe6d8c0, 1);
-            scrap.fillRoundedRect(-280, -70, 560, 140, 18);
+            scrap.fillRoundedRect(-scrapW / 2, -scrapH / 2, scrapW, scrapH, 18);
         }
-        scrap.setPosition(W / 2, H * 0.3);
+        scrap.setPosition(W / 2, extra.finale ? H * 0.28 : H * 0.3);
         overlay.add(scrap);
 
-        var titleY = extra.subtitle ? H * 0.26 : H * 0.3;
+        var titleY = extra.finale ? H * 0.22 : (extra.subtitle ? H * 0.26 : H * 0.3);
         var titleSize = extra.subtitle || extra.campaignCta ? '48px' : '56px';
         var titleText = this.add.text(W / 2, titleY, opts.title || '', {
             fontFamily: 'Arial, sans-serif',
@@ -940,12 +1001,12 @@ export class UIScene extends Phaser.Scene {
         }).setOrigin(0.5).setScale(0.72);
         overlay.add(titleText);
         if (extra.subtitle) {
-            overlay.add(this.add.text(W / 2, H * 0.36, extra.subtitle, {
+            overlay.add(this.add.text(W / 2, extra.finale ? H * 0.335 : H * 0.36, extra.subtitle, {
                 fontFamily: 'Arial, sans-serif',
-                fontSize: '28px',
+                fontSize: extra.finale ? '26px' : '28px',
                 color: '#5a4638',
                 align: 'center',
-                wordWrap: { width: 500 }
+                wordWrap: { width: 520 }
             }).setOrigin(0.5));
         }
 
@@ -989,8 +1050,9 @@ export class UIScene extends Phaser.Scene {
                 g.scene.start('LevelSelect', { pack: 'campaign' });
             }), { width: 620, color: 0x47a798, fontSize: 26, interactive: false }));
         } else {
-            addOverlayButton(new UIButton(this, W / 2, H * (win ? 0.62 : (opts.continueOffer ? 0.74 : 0.64)), win ? 'ДАЛЬШЕ' : 'В МЕНЮ', go(function (g) {
-                if (win) {
+            var nextLabel = extra.finale ? 'В МЕНЮ' : (win ? 'ДАЛЬШЕ' : 'В МЕНЮ');
+            addOverlayButton(new UIButton(this, W / 2, H * (win ? 0.62 : (opts.continueOffer ? 0.74 : 0.64)), nextLabel, go(function (g) {
+                if (win && !extra.finale) {
                     var next = LevelManager.get(g, g.levelId + 1, g.packId);
                     if (next) g.scene.start('Game', { pack: g.packId, level: next.id });
                     else g.scene.start('LevelSelect', { pack: g.packId });
@@ -1036,6 +1098,9 @@ export class UIScene extends Phaser.Scene {
         if (this.adStub && this.adStub.hit && this.adStub.hit.scene) {
             this.adStub.hit.setInteractive({ useHandCursor: true });
         }
+        var game = this.scene.get('Game');
+        if (game && game._lockStickUntilRelease) game._lockStickUntilRelease();
+        else if (game && game._resetStick) game._resetStick();
     }
 
     _armOverlayButtons(overlay, buttons) {

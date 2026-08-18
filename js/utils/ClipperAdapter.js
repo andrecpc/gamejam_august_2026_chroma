@@ -156,8 +156,11 @@ export function bufferPolyline(points, width) {
     return solution.map(fromClip).map(tidyLight).filter(function (p) { return p.length >= 3; });
 }
 
-export function splitByTrail(unclaimedPolys, trailPoints, width) {
+export function splitByTrail(unclaimedPolys, trailPoints, width, light) {
     var buf = bufferPolyline(trailPoints, width);
     if (!buf.length) return { parts: unclaimedPolys.slice(), buffer: [] };
-    return { parts: difference(unclaimedPolys, buf, true), buffer: buf };
+    return {
+        parts: difference(unclaimedPolys, buf, light !== false),
+        buffer: buf
+    };
 }

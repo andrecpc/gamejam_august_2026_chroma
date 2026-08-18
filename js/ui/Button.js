@@ -24,6 +24,8 @@
             var radius = options.radius || 24;
             var baseColor = options.color !== undefined ? options.color : 0x4a8adf;
             var fontSize = options.fontSize || 36;
+            if (this._isYellow(baseColor)) baseColor = 0x477ab4;
+            if (this._isTooLight(baseColor)) baseColor = this._readableFill(baseColor);
 
             this._w = w;
             this._h = h;
@@ -197,6 +199,26 @@
             return this;
         },
 
+        _isYellow: function (color) {
+            var c = Phaser.Display.Color.IntegerToColor(color);
+            return c.red > 170 && c.green > 125 && c.blue < 140 &&
+                c.red > c.blue + 40 && c.green > c.blue + 20;
+        },
+        _isTooLight: function (color) {
+            var c = Phaser.Display.Color.IntegerToColor(color);
+            return (0.299 * c.red + 0.587 * c.green + 0.114 * c.blue) / 255 > 0.52;
+        },
+        _readableFill: function (color) {
+            var c = Phaser.Display.Color.IntegerToColor(color);
+            var k = 0;
+            while ((0.299 * c.red + 0.587 * c.green + 0.114 * c.blue) / 255 > 0.42 && k < 8) {
+                c.red = Math.round(c.red * 0.72);
+                c.green = Math.round(c.green * 0.72);
+                c.blue = Math.round(c.blue * 0.72);
+                k += 1;
+            }
+            return Phaser.Display.Color.GetColor(c.red, c.green, c.blue);
+        },
         _lighten: function (color, amount) {
             var c = Phaser.Display.Color.IntegerToColor(color);
             return Phaser.Display.Color.GetColor(

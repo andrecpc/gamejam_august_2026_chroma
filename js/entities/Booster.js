@@ -4,6 +4,7 @@ var ICONS = {
     speed: '⚡',
     slow: '🐌',
     life: '❤',
+    hurt: '💔',
     shield: '◆',
     enemySlow: '❄',
     removeEnemy: '✦',
@@ -14,6 +15,7 @@ var COLORS = {
     speed: 0xffd24a,
     slow: 0x9c6bff,
     life: 0xff5c7a,
+    hurt: 0xb95c6b,
     shield: 0x55eaff,
     enemySlow: 0x7bc8ff,
     removeEnemy: 0xff8a3d,
@@ -74,6 +76,14 @@ export class Booster {
             duration: 220,
             ease: 'Back.easeOut'
         });
+    }
+
+    despawn() {
+        if (this.collected) return;
+        this.active = false;
+        this.collected = true;
+        if (this.pulseTween) this.pulseTween.pause();
+        this.container.setVisible(false);
     }
 
     collect(onComplete) {
