@@ -47,7 +47,7 @@
 
             this.load.image('paper-desk', 'assets/paper/desk.png?v=1.7.2');
             this.load.image('paper-kraft', 'assets/paper/kraft.png?v=1.7.1');
-            this.load.json('levels', 'levels/levels.json?v=1.7.10');
+            this.load.json('levels', 'levels/levels.json?v=1.7.14');
 
             // Заглушка: имитируем короткую загрузку, чтобы бар не мигал
             this._fakeProgress = 0;

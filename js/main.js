@@ -6,8 +6,8 @@
  * пропорций и центрируется. Так одинаково хорошо и на телефоне, и в браузере
  * на десктопе (по бокам/сверху будут аккуратные тёмные поля).
  */
-import { GameScene } from './scenes/GameScene.js?v=1.7.10';
-import { UIScene } from './scenes/UIScene.js?v=1.7.10';
+import { GameScene } from './scenes/GameScene.js?v=1.7.13';
+import { UIScene } from './scenes/UIScene.js?v=1.7.13';
 import { SkinSelectScene } from './scenes/SkinSelectScene.js?v=1.7.9';
 
 var config = {
@@ -39,10 +39,14 @@ window.game = game;
 
 function unlockAudio() {
     if (window.AudioManager) AudioManager.resume();
-    window.removeEventListener('pointerdown', unlockAudio);
-    window.removeEventListener('touchstart', unlockAudio);
-    window.removeEventListener('click', unlockAudio);
 }
 window.addEventListener('pointerdown', unlockAudio);
-window.addEventListener('touchstart', unlockAudio);
+window.addEventListener('touchstart', unlockAudio, { passive: true });
 window.addEventListener('click', unlockAudio);
+function resumeAudio() {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (window.AudioManager) AudioManager.resume();
+}
+document.addEventListener('visibilitychange', resumeAudio);
+window.addEventListener('pageshow', resumeAudio);
+window.addEventListener('focus', resumeAudio);

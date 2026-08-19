@@ -23,9 +23,17 @@ export class ObjectiveManager {
             (this.catchTarget > 0 ? 'catch' :
                 (this.coverTarget > 0 ? 'coverage' : 'vials'));
         this.startedAt = scene.time.now;
+        this.clockHeld = this.timeLimit > 0;
         this.cuts = 0;
         this.finished = false;
         this.lastSignature = '';
+    }
+
+    startClock() {
+        this.clockHeld = false;
+        this.startedAt = this.scene.time.now;
+        this.lastSignature = '';
+        this._emit(this.snapshot());
     }
 
     _bossDone() {
@@ -35,6 +43,10 @@ export class ObjectiveManager {
 
     update() {
         if (this.finished) return null;
+        if (this.clockHeld) {
+            this._emit(this.snapshot());
+            return null;
+        }
         var snapshot = this.snapshot();
         this._emit(snapshot);
         if (this.timeLimit > 0 && snapshot.timeLeft <= 0) {
@@ -103,7 +115,7 @@ export class ObjectiveManager {
     }
 
     snapshot() {
-        var elapsed = (this.scene.time.now - this.startedAt) / 1000;
+        var elapsed = this.clockHeld ? 0 : (this.scene.time.now - this.startedAt) / 1000;
         return {
             timeLeft: this.timeLimit > 0
                 ? Math.max(0, Math.ceil(this.timeLimit - elapsed))

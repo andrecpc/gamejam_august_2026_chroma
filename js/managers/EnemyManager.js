@@ -1,10 +1,11 @@
-import { Enemy } from '../entities/Enemy.js?v=1.5.3';
+import { Enemy } from '../entities/Enemy.js?v=1.7.11';
 import { EnemyProjectile } from '../entities/EnemyProjectile.js';
 import { dist, pointToSegmentDist, polylineLength } from '../utils/Geometry.js';
 
 export class EnemyManager {
     constructor(scene, level, field) {
         this.scene = scene;
+        this.field = field;
         this.enemies = [];
         this.laserHitsPlayer = false;
         this.laserGfx = scene.add.graphics();
@@ -19,11 +20,49 @@ export class EnemyManager {
         for (var i = 0; i < configs.length; i++) {
             var enemy = new Enemy(scene);
             enemy.spawn(configs[i]);
+            this._nudgeFromPlayer(enemy);
             this.enemies.push(enemy);
             if (enemy.type === 'thief') {
                 this._resetThiefTrail(enemy);
             }
         }
+    }
+
+    onPlayStart() {
+        var now = this.scene.time.now;
+        for (var i = 0; i < this.enemies.length; i++) {
+            var enemy = this.enemies[i];
+            if (!enemy.active || enemy.type !== 'turret') continue;
+            var delay = enemy.cfg && enemy.cfg.initialDelay != null
+                ? enemy.cfg.initialDelay
+                : 900;
+            enemy.nextActionAt = now + delay;
+        }
+    }
+
+    _nudgeFromPlayer(enemy) {
+        if (!enemy || enemy.type === 'turret' || enemy.type === 'laser') return;
+        var b = this.field && this.field.bounds;
+        if (!b) return;
+        var frame = b.frame || 28;
+        var sx = b.x + b.w / 2;
+        var sy = b.y + b.h - frame / 2;
+        var dx = enemy.x - sx;
+        var dy = enemy.y - sy;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d >= 140) return;
+        var cx = b.x + b.w / 2;
+        var cy = b.y + b.h / 2;
+        var nx = cx - enemy.x;
+        var ny = cy - enemy.y;
+        var nl = Math.sqrt(nx * nx + ny * ny) || 1;
+        var push = 160 - d;
+        enemy.x += nx / nl * push;
+        enemy.y += ny / nl * push;
+        var pad = frame + (enemy.r || 13);
+        enemy.x = Math.max(b.x + pad, Math.min(b.x + b.w - pad, enemy.x));
+        enemy.y = Math.max(b.y + pad, Math.min(b.y + b.h - pad, enemy.y));
+        if (enemy._sync) enemy._sync();
     }
 
     update(dt, field, player) {
@@ -90,7 +129,8 @@ export class EnemyManager {
         var warning = cfg.warning || 1200;
         var activeTime = cfg.activeTime || 650;
         var phase = cfg.phase || 0;
-        var cycle = (now + phase) % interval;
+        var t0 = this.scene.playStartedAt || this.scene._spawnTime || 0;
+        var cycle = ((now - t0) + phase) % interval;
         var isWarning = cycle < warning;
         var isActive = cycle >= warning && cycle < warning + activeTime;
         if (!isWarning && !isActive) return;

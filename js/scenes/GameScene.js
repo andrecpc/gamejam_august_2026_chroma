@@ -1,12 +1,12 @@
 import { Player } from '../entities/Player.js?v=1.7.10';
-import { FieldManager } from '../managers/FieldManager.js?v=1.7.10';
+import { FieldManager } from '../managers/FieldManager.js?v=1.7.12';
 import { VialManager } from '../managers/VialManager.js?v=1.5.5';
 import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
 import { MagneticManager } from '../managers/MagneticManager.js';
-import { BoosterManager } from '../managers/BoosterManager.js?v=1.7.8';
-import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.8';
-import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.7.5';
-import { BossManager } from '../managers/BossManager.js?v=1.7.9';
+import { BoosterManager } from '../managers/BoosterManager.js?v=1.7.11';
+import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.11';
+import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.7.11';
+import { BossManager } from '../managers/BossManager.js?v=1.7.11';
 import { RewardedAdManager } from '../managers/RewardedAdManager.js?v=1.7.8';
 import { dist, hexToInt, pointHitsPolyline, polyCentroid } from '../utils/Geometry.js';
 
@@ -46,6 +46,9 @@ export class GameScene extends Phaser.Scene {
         this._finaleConfettiEvent = null;
         this._stickNeedsRelease = false;
         this._onVisChange = null;
+        this._introHold = false;
+        this.playStartedAt = 0;
+        this._bossDeathPlaying = false;
     }
 
     create() {
@@ -88,7 +91,11 @@ export class GameScene extends Phaser.Scene {
         this._lockStickUntilRelease();
         this.events.on('resume', this._lockStickUntilRelease, this);
         this._onVisChange = function () {
-            if (document.hidden) self._lockStickUntilRelease();
+            if (document.hidden) {
+                self._lockStickUntilRelease();
+                return;
+            }
+            if (window.AudioManager && AudioManager.resume) AudioManager.resume();
         };
         document.addEventListener('visibilitychange', this._onVisChange);
 
@@ -96,6 +103,13 @@ export class GameScene extends Phaser.Scene {
         this.floatLayer = this.add.container(0, 0);
         this.floatLayer.setDepth(25);
         this.game.events.on('game:baskets-idle', this._onBasketsIdle, this);
+        if (this.level.constraints && this.level.constraints.time) {
+            this._introHold = true;
+            this.playStartedAt = 0;
+            this._lockStickUntilRelease();
+        } else {
+            this.playStartedAt = this.time.now;
+        }
         this.time.delayedCall(0, function () {
             self.game.events.emit('game:ready', {
                 lives: self.lives,
@@ -103,6 +117,9 @@ export class GameScene extends Phaser.Scene {
                 palette: self.level.palette,
                 vials: self.vials.snapshot()
             });
+            if (self.level.constraints && self.level.constraints.time) {
+                self._startTimedIntro();
+            }
             if (self.bossManager) self.bossManager.emitStatus();
             if (self.bossManager && self.bossManager.lockPuzzle) {
                 self.time.delayedCall(500, function () {
@@ -177,6 +194,8 @@ export class GameScene extends Phaser.Scene {
         var self = this;
         this.input.on('pointerdown', function (p) {
             if (self.gameOver) return;
+            if (self._introHold) return;
+            if (self._bossDeathPlaying) return;
             if (self._stickNeedsRelease) return;
             var W = self.scale.width;
             var H = self.scale.height;
@@ -255,6 +274,28 @@ export class GameScene extends Phaser.Scene {
 
     update(t, dt) {
         if (this.gameOver) return;
+        if (this._introHold) {
+            if (this._stickNeedsRelease) {
+                this._resetStick();
+                if (!this._anyPointerDown() && !this._stickMouseHeld) {
+                    this._stickNeedsRelease = false;
+                }
+            } else {
+                this._resetStick();
+            }
+            this._drawStick();
+            return;
+        }
+        if (this.bossManager && this.bossManager.defeated && !this.gameOver) {
+            this._bossDeathPlaying = !!(this.bossManager.deathAnimUntil &&
+                this.time.now < this.bossManager.deathAnimUntil);
+            if (this._tryBossWin()) return;
+            if (this._bossDeathPlaying) {
+                this._resetStick();
+                this._drawStick();
+                return;
+            }
+        }
         if (this._stickNeedsRelease) {
             this._resetStick();
             if (!this._anyPointerDown() && !this._stickMouseHeld) {
@@ -410,6 +451,7 @@ export class GameScene extends Phaser.Scene {
         var anyAccept = false;
         var anyReject = false;
         var reserveColor = null;
+        var noBasket = false;
         var self = this;
         var objectiveResult = null;
         var coreBlocked = false;
@@ -427,6 +469,7 @@ export class GameScene extends Phaser.Scene {
             if (mode === 'blocked') {
                 if (piece === main || piece.area > (main.area * 0.45)) {
                     anyReject = true;
+                    noBasket = true;
                     self.field.bouncePolys(piece.polys);
                 }
                 return;
@@ -434,6 +477,9 @@ export class GameScene extends Phaser.Scene {
             if (mode === 'vanish') {
                 acceptedByColor[piece.color] = 1;
                 anyAccept = true;
+                if (piece === main || (main && piece.area > main.area * 0.45)) {
+                    noBasket = true;
+                }
                 return;
             }
             if (self.vials.wouldExhaustColor(
@@ -450,6 +496,7 @@ export class GameScene extends Phaser.Scene {
             if (result.acceptedArea <= 0) {
                 if (piece === main) {
                     anyReject = true;
+                    noBasket = true;
                     self.field.bouncePolys(piece.polys);
                 }
                 return;
@@ -491,7 +538,7 @@ export class GameScene extends Phaser.Scene {
                     ': ещё ×' + count
                 );
             } else {
-                this._floatText(this.player.x, this.player.y - 28, 'Нет свободной корзины!');
+                this._toastNoBasket();
             }
             return;
         }
@@ -532,6 +579,7 @@ export class GameScene extends Phaser.Scene {
             GameSettings.vibrate(12);
             this._cutImpact();
             this._fireTutorials('cut');
+            this.game.events.emit('game:tutorial-dismiss', { reason: 'cut' });
             if (this.objectives) {
                 objectiveResult = this.objectives.onSuccessfulCut(dead.length);
             }
@@ -545,6 +593,8 @@ export class GameScene extends Phaser.Scene {
                 this.player.y - 28,
                 'Этот цвет нужен будущим корзинам'
             );
+        } else if (noBasket && !coreBlocked) {
+            this._toastNoBasket();
         }
 
         this.game.events.emit('game:vials-changed', this.vials.snapshot());
@@ -562,7 +612,7 @@ export class GameScene extends Phaser.Scene {
             if (window.AudioManager && AudioManager.playError) AudioManager.playError();
             return;
         }
-        this._floatText(this.player.x, this.player.y - 28, 'Нет свободной корзины!');
+        this._toastNoBasket();
         if (window.AudioManager && AudioManager.playError) AudioManager.playError();
     }
 
@@ -712,6 +762,66 @@ export class GameScene extends Phaser.Scene {
         this._wasDrawing = drawing;
     }
 
+    _startTimedIntro() {
+        var self = this;
+        this._introHold = true;
+        this.playStartedAt = 0;
+        this._lockStickUntilRelease();
+        this.game.events.emit('game:countdown', {
+            text: 'Уровень на время',
+            tick: false
+        });
+        if (GameSettings.reducedMotion()) {
+            this.time.delayedCall(900, function () {
+                if (self.sys && self.sys.isActive()) self._endTimedIntro();
+            });
+            return;
+        }
+        this.time.delayedCall(2000, function () {
+            if (self.sys && self.sys.isActive()) {
+                self.game.events.emit('game:countdown', { text: '3', tick: true });
+            }
+        });
+        this.time.delayedCall(2800, function () {
+            if (self.sys && self.sys.isActive()) {
+                self.game.events.emit('game:countdown', { text: '2', tick: true });
+            }
+        });
+        this.time.delayedCall(3600, function () {
+            if (self.sys && self.sys.isActive()) {
+                self.game.events.emit('game:countdown', { text: '1', tick: true });
+            }
+        });
+        this.time.delayedCall(4300, function () {
+            if (self.sys && self.sys.isActive()) self._endTimedIntro();
+        });
+    }
+
+    _endTimedIntro() {
+        this.game.events.emit('game:countdown-hide');
+        this._introHold = false;
+        this.playStartedAt = this.time.now;
+        if (this.objectives && this.objectives.startClock) this.objectives.startClock();
+        if (this.enemyManager && this.enemyManager.onPlayStart) {
+            this.enemyManager.onPlayStart();
+        }
+        if (this.bossManager && this.bossManager.active && !this.bossManager.defeated) {
+            var delay = this.bossManager.cfg && this.bossManager.cfg.initialDelay != null
+                ? this.bossManager.cfg.initialDelay
+                : 900;
+            this.bossManager.nextAttackAt = this.time.now + delay;
+        }
+        this._lockStickUntilRelease();
+    }
+
+    _toastNoBasket() {
+        var b = this.field && this.field.bounds;
+        var x = this.player ? this.player.x : this.scale.width / 2;
+        var y = this.player ? this.player.y - 36 : this.scale.height * 0.42;
+        if (b) y = Math.min(y, b.y + b.h * 0.42);
+        this._floatText(x, y, 'Нет свободной корзины!', { hold: 2200, size: '24px' });
+    }
+
     _fireTutorials(trigger) {
         if (this.packId !== 'training' || !this.level || !this.level.tutorials) {
             return;
@@ -793,6 +903,9 @@ export class GameScene extends Phaser.Scene {
         this.game.events.emit('game:lives-changed', { lives: this.lives });
         this._respawnOnFrame();
         this._blinkInvuln();
+        if (this.lives > 0 && this.boosters && this.boosters.grantShield) {
+            this.boosters.grantShield(2000);
+        }
         if (this.lives <= 0) this._lose();
         return true;
     }
@@ -966,12 +1079,28 @@ export class GameScene extends Phaser.Scene {
         if (!this.bossManager || !this.bossManager.defeated || this.gameOver) {
             return false;
         }
+        if (this.bossManager.deathAnimUntil &&
+            this.time.now < this.bossManager.deathAnimUntil) {
+            this._bossDeathPlaying = true;
+            return false;
+        }
+        this._bossDeathPlaying = false;
+        if (this._pendingWin) {
+            if (this._needsBasketWinWait()) return false;
+            this._pendingWin = false;
+            this._win();
+            return true;
+        }
         if (!this.objectives || this.objectives.winCondition === 'boss') {
             this._win();
             return true;
         }
         var result = this.objectives.evaluateNow();
         if (result && result.win) {
+            if (this._needsBasketWinWait()) {
+                this._pendingWin = true;
+                return false;
+            }
             this._win();
             return true;
         }
@@ -1064,6 +1193,10 @@ export class GameScene extends Phaser.Scene {
 
     _onBasketsIdle() {
         if (!this._pendingWin || this.won) return;
+        if (this.bossManager && this.bossManager.deathAnimUntil &&
+            this.time.now < this.bossManager.deathAnimUntil) {
+            return;
+        }
         this._pendingWin = false;
         this._win();
     }
@@ -1071,6 +1204,16 @@ export class GameScene extends Phaser.Scene {
     _handleObjectiveResult(result) {
         if (!result) return false;
         if (result.win) {
+            if (this.bossManager && this.bossManager.defeated &&
+                this.bossManager.deathAnimUntil &&
+                this.time.now < this.bossManager.deathAnimUntil) {
+                this._pendingWin = true;
+                this._bossDeathPlaying = true;
+                if (this._needsBasketWinWait()) {
+                    this.time.delayedCall(1800, this._onBasketsIdle, [], this);
+                }
+                return true;
+            }
             if (this._needsBasketWinWait()) {
                 this.gameOver = true;
                 this._pendingWin = true;
@@ -1133,6 +1276,9 @@ export class GameScene extends Phaser.Scene {
                 this.invulnUntil = this.time.now + 2200;
                 this._respawnOnFrame();
                 this._blinkInvuln();
+                if (this.boosters && this.boosters.grantShield) {
+                    this.boosters.grantShield(2000);
+                }
                 this.game.events.emit('game:lives-changed', { lives: this.lives });
                 this._floatText(this.player.x, this.player.y - 28, 'ВОСКРЕШЕНИЕ!');
             }

@@ -136,6 +136,8 @@ export class UIScene extends Phaser.Scene {
         this.game.events.on('game:basket-arrive', this._onBasketArrive, this);
         this.game.events.on('game:tutorial', this._onTutorial, this);
         this.game.events.on('game:tutorial-dismiss', this._onTutorialDismiss, this);
+        this.game.events.on('game:countdown', this._onCountdown, this);
+        this.game.events.on('game:countdown-hide', this._hideCountdown, this);
         this.game.events.on('game:over', this._onGameOver, this);
         this.events.once('shutdown', this._off, this);
         this._showStartTutorials(level);
@@ -156,8 +158,11 @@ export class UIScene extends Phaser.Scene {
         this.game.events.off('game:basket-arrive', this._onBasketArrive, this);
         this.game.events.off('game:tutorial', this._onTutorial, this);
         this.game.events.off('game:tutorial-dismiss', this._onTutorialDismiss, this);
+        this.game.events.off('game:countdown', this._onCountdown, this);
+        this.game.events.off('game:countdown-hide', this._hideCountdown, this);
         this.game.events.off('game:over', this._onGameOver, this);
         this.hideEndOverlay();
+        this._hideCountdown(true);
         if (this.tutorialCard) {
             this.tutorialCard.destroy(true);
             this.tutorialCard = null;
@@ -199,22 +204,25 @@ export class UIScene extends Phaser.Scene {
         var copy = (window.Paper && Paper.basketText) ? Paper.basketText(data.text) : data.text;
         var text = this.add.text(0, 0, copy, {
             fontFamily: 'Arial, sans-serif',
-            fontSize: '20px',
+            fontSize: '26px',
             fontStyle: 'bold',
             color: '#3d2a22',
             align: 'center',
-            wordWrap: { width: 460 }
+            lineSpacing: 6,
+            wordWrap: { width: 580 }
         }).setOrigin(0.5);
-        var cardH = Math.min(168, Math.max(96, text.height + 28));
-        var card = this.add.container(W / 2, 150).setDepth(80);
+        var cardH = Math.min(460, Math.max(120, text.height + 40));
+        var cardY = Math.max(110, 36 + cardH / 2);
+        if (cardY + cardH / 2 > 500) cardY = 500 - cardH / 2;
+        var card = this.add.container(W / 2, cardY).setDepth(80);
         var bg = this.add.graphics();
         if (window.Paper && Paper.drawScrap) {
-            Paper.drawScrap(bg, 0, 0, 540, cardH + 16, 0xe6d8c0, 81, {
-                jag: 8, shadowX: 12, shadowY: 16, fibers: true
+            Paper.drawScrap(bg, 0, 0, 640, cardH + 20, 0xe6d8c0, 81, {
+                jag: 9, shadowX: 14, shadowY: 18, fibers: true
             });
         } else {
             bg.fillStyle(0xe6d8c0, 1);
-            bg.fillRoundedRect(-270, -cardH / 2, 540, cardH, 18);
+            bg.fillRoundedRect(-320, -cardH / 2, 640, cardH, 20);
         }
         card.add([bg, text]);
         card.setAlpha(0);
@@ -223,7 +231,7 @@ export class UIScene extends Phaser.Scene {
         this.tweens.add({
             targets: card,
             alpha: 1,
-            y: 142,
+            y: cardY - 8,
             duration: GameSettings.reducedMotion() ? 80 : 220,
             ease: 'Quad.easeOut'
         });
@@ -231,6 +239,7 @@ export class UIScene extends Phaser.Scene {
 
     _onGameOver() {
         this._hideTutorial(true);
+        this._hideCountdown(true);
         if (this.playerMark) this.playerMark.setVisible(false);
         if (this.playerHalo) this.playerHalo.setVisible(false);
         if (this.stickGfx) this.stickGfx.clear();
@@ -246,7 +255,87 @@ export class UIScene extends Phaser.Scene {
             this._hideTutorial(false);
         } else if (this.tutorialPersist === 'until-draw' && reason === 'draw') {
             this._hideTutorial(false);
+        } else if (this.tutorialPersist === 'until-cut' && reason === 'cut') {
+            this._hideTutorial(false);
         }
+    }
+
+    _onCountdown(data) {
+        if (!data || !data.text) return;
+        this._hideCountdown(true);
+        var W = this.scale.width;
+        var H = this.scale.height;
+        var tick = !!data.tick;
+        var layer = this.add.container(0, 0).setDepth(220).setAlpha(0);
+        var dim = this.add.rectangle(W / 2, H / 2, W + 8, H + 8, 0x0c254d, tick ? 0.32 : 0.58);
+        dim.setInteractive();
+        var copy = (window.Paper && Paper.basketText) ? Paper.basketText(data.text) : data.text;
+        var label;
+        if (tick) {
+            label = this.add.text(W / 2, H * 0.42, copy, {
+                fontFamily: 'Arial, sans-serif',
+                fontSize: '120px',
+                fontStyle: 'bold',
+                color: '#ffd24a',
+                stroke: '#0c254d',
+                strokeThickness: 10,
+                align: 'center'
+            }).setOrigin(0.5).setScale(1.18);
+            layer.add([dim, label]);
+        } else {
+            var scrap = this.add.graphics();
+            if (window.Paper && Paper.drawScrap) {
+                Paper.drawScrap(scrap, 0, 0, 600, 180, 0xe6d8c0, 88, {
+                    jag: 10, shadowX: 16, shadowY: 20, fibers: true
+                });
+            } else {
+                scrap.fillStyle(0xe6d8c0, 1);
+                scrap.fillRoundedRect(-300, -90, 600, 180, 22);
+            }
+            scrap.setPosition(W / 2, H * 0.42);
+            label = this.add.text(W / 2, H * 0.42, copy, {
+                fontFamily: 'Arial, sans-serif',
+                fontSize: '44px',
+                fontStyle: 'bold',
+                color: '#3d2a22',
+                align: 'center',
+                wordWrap: { width: 520 }
+            }).setOrigin(0.5);
+            layer.add([dim, scrap, label]);
+        }
+        this.countdownLayer = layer;
+        this.tweens.add({
+            targets: layer,
+            alpha: 1,
+            duration: GameSettings.reducedMotion() ? 60 : 180,
+            ease: 'Quad.easeOut'
+        });
+        if (tick && !GameSettings.reducedMotion()) {
+            this.tweens.add({
+                targets: label,
+                scale: 1,
+                duration: 280,
+                ease: 'Back.easeOut'
+            });
+        }
+        if (window.AudioManager && AudioManager.playClick && tick) AudioManager.playClick();
+    }
+
+    _hideCountdown(immediate) {
+        var layer = this.countdownLayer;
+        this.countdownLayer = null;
+        if (!layer) return;
+        this.tweens.killTweensOf(layer);
+        if (immediate || GameSettings.reducedMotion()) {
+            layer.destroy(true);
+            return;
+        }
+        this.tweens.add({
+            targets: layer,
+            alpha: 0,
+            duration: 180,
+            onComplete: function () { layer.destroy(true); }
+        });
     }
 
     _hideTutorial(immediate) {

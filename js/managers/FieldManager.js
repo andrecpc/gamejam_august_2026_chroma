@@ -65,6 +65,7 @@ export class FieldManager {
         }
         this._buildFrame();
         this._loadPolygons(level.polygons);
+        this._loadStartClaimed(level.claimed);
         this.totalArea = this._sumColorArea();
         this.playerClaimedArea = 0;
         this.vialCapacity = this.totalArea * 0.10;
@@ -95,6 +96,17 @@ export class FieldManager {
         this.colors = list.map(function (p) {
             return { id: p.id, color: p.color, points: p.points.slice() };
         });
+    }
+
+    _loadStartClaimed(list) {
+        if (!list || !list.length) return;
+        var polys = [];
+        for (var i = 0; i < list.length; i++) {
+            var pts = list[i].points || list[i];
+            if (pts && pts.length >= 3) polys.push(pts.slice());
+        }
+        if (!polys.length) return;
+        this.claimed = unionPolys(this.claimed.concat(polys));
     }
 
     _sumColorArea() {
@@ -236,7 +248,7 @@ export class FieldManager {
         var unclaimedArea = polygonArea(active);
         var i;
 
-        var extended = extendEnds(trail, 56);
+        var extended = extendEnds(trail, 80);
         var split = this._splitUntilSevered(working, extended);
         var parts = (split.parts || []).filter(function (p) {
             return polygonArea(p) >= SLIVER_AREA;
@@ -252,17 +264,25 @@ export class FieldManager {
         }
 
         if (parts.length < 2) {
-            var colorPoly = this._colorPolyForTrail(trail);
-            if (colorPoly) {
-                split = this._splitUntilSevered([colorPoly], extended);
+            var colorHits = [];
+            for (i = 0; i < this.colors.length; i++) {
+                var hits = this._trailHitsPoly(trail, this.colors[i].points);
+                if (hits > 0) {
+                    colorHits.push({ points: this.colors[i].points, hits: hits });
+                }
+            }
+            colorHits.sort(function (a, b) { return b.hits - a.hits; });
+            for (i = 0; i < colorHits.length; i++) {
+                split = this._splitUntilSevered([colorHits[i].points], extended);
                 var colorParts = (split.parts || []).filter(function (p) {
                     return polygonArea(p) >= SLIVER_AREA;
                 });
                 if (colorParts.length >= 2) {
                     parts = colorParts;
                     buffer = split.buffer || buffer;
-                    working = [colorPoly];
-                    unclaimedArea = polygonArea(colorPoly);
+                    working = [colorHits[i].points];
+                    unclaimedArea = polygonArea(colorHits[i].points);
+                    break;
                 }
             }
         }

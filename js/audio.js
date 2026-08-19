@@ -75,9 +75,79 @@
             if (this.ctx && this.ctx.state === 'suspended') {
                 this.ctx.resume();
             }
+            this.unlockHtmlAudio();
+            this.preloadFinale();
+            if (this._wantFinale || this._finaleSource || this._finaleEl) {
+                this._playFinaleNow();
+                return;
+            }
             if (GameSettings.get('musicOn')) {
+                if (this._started && this.ctx) {
+                    this._nextNoteTime = this.ctx.currentTime + 0.05;
+                }
                 this.startMusic();
             }
+        },
+
+        unlockHtmlAudio: function () {
+            if (this._htmlUnlocked) return;
+            var self = this;
+            try {
+                var el = this._htmlUnlockEl || new Audio('assets/audio/papercut.mp3');
+                el.preload = 'auto';
+                el.loop = true;
+                el.setAttribute('playsinline', 'true');
+                el.setAttribute('webkit-playsinline', 'true');
+                el.volume = 0;
+                el.muted = true;
+                this._htmlUnlockEl = el;
+                var p = el.play();
+                var done = function () {
+                    try { el.pause(); el.currentTime = 0; } catch (e) {}
+                    el.muted = false;
+                    el.volume = 1;
+                    self._htmlUnlocked = true;
+                };
+                if (p && p.then) p.then(done).catch(function () {});
+                else done();
+            } catch (e) {}
+        },
+
+        preloadFinale: function (done) {
+            var self = this;
+            if (this._finaleBuffer) {
+                if (done) done();
+                return;
+            }
+            if (this._finaleLoading) {
+                if (done) this._finaleWaiters.push(done);
+                return;
+            }
+            this._finaleWaiters = done ? [done] : [];
+            this._finaleLoading = true;
+            this._ensureContext();
+            if (!this.ctx || !window.fetch) {
+                this._finaleLoading = false;
+                if (done) done();
+                return;
+            }
+            fetch('assets/audio/papercut.mp3').then(function (res) {
+                if (!res.ok) throw new Error('finale http');
+                return res.arrayBuffer();
+            }).then(function (buf) {
+                return self.ctx.decodeAudioData(buf);
+            }).then(function (decoded) {
+                self._finaleBuffer = decoded;
+                self._finaleLoading = false;
+                var waiters = self._finaleWaiters || [];
+                self._finaleWaiters = [];
+                for (var i = 0; i < waiters.length; i++) waiters[i]();
+            }).catch(function () {
+                self._finaleLoading = false;
+                var waiters = self._finaleWaiters || [];
+                self._finaleWaiters = [];
+                for (var i = 0; i < waiters.length; i++) waiters[i]();
+            });
         },
 
         // ---- Музыка ----
@@ -85,9 +155,13 @@
         startMusic: function (mode) {
             this._ensureContext();
             if (!this.ctx) return;
+            if (this._wantFinale || this._finaleSource || this._finaleEl) return;
             if (mode) this._desiredMode = mode;
             var next = this._desiredMode || 'normal';
-            if (this._started && this._musicMode === next) return;
+            if (this._started && this._musicMode === next) {
+                this._nextNoteTime = Math.max(this._nextNoteTime || 0, this.ctx.currentTime + 0.05);
+                return;
+            }
             this.stopMusic();
             this._musicMode = next;
             this._started = true;
@@ -285,17 +359,80 @@
             }
         },
         playFinale: function () {
-            var self = this;
+            this._wantFinale = true;
             this._ensureContext();
             this.stopMusic();
-            this.stopFinale();
-            var el = new Audio('assets/audio/papercut.mp3');
-            el.loop = true;
+            this.preloadFinale();
+            this._playFinaleNow();
+        },
+        _playFinaleNow: function () {
+            if (!this._wantFinale) return;
+            if (this._finaleSource || (this._finaleEl && !this._finaleEl.paused)) {
+                if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+                if (this._finaleEl && this._finaleEl.paused) {
+                    var keep = this._finaleEl.play();
+                    if (keep && keep.catch) keep.catch(function () {});
+                }
+                return;
+            }
+            if (this._finaleBuffer && this.ctx) {
+                this._playFinaleBuffer();
+                return;
+            }
+            this._playFinaleElement();
+            var self = this;
+            this.preloadFinale(function () {
+                if (!self._wantFinale) return;
+                if (self._finaleBuffer && self.ctx && !self._finaleSource) {
+                    self.stopFinale(true);
+                    self._wantFinale = true;
+                    self._playFinaleBuffer();
+                }
+            });
+        },
+        _finaleVolume: function () {
             var vol = GameSettings.get('musicOn') ? (GameSettings.get('musicVolume') || 0.9) : 0;
-            el.volume = Math.max(0, Math.min(1, vol * 0.32));
+            return Math.max(0, Math.min(1, vol * 0.42));
+        },
+        _playFinaleBuffer: function () {
+            if (!this.ctx || !this._finaleBuffer) return;
+            this.stopFinale(true);
+            this._wantFinale = true;
+            try {
+                var src = this.ctx.createBufferSource();
+                src.buffer = this._finaleBuffer;
+                src.loop = true;
+                var g = this.ctx.createGain();
+                g.gain.value = this._finaleVolume();
+                src.connect(g);
+                g.connect(this.musicGain || this.ctx.destination);
+                src.start(0);
+                this._finaleSource = src;
+                this._finaleGain = g;
+            } catch (e) {
+                if (!this._finaleEl) this._playFinaleElement();
+            }
+        },
+        _playFinaleElement: function () {
+            var self = this;
+            this.stopFinale(true);
+            this._wantFinale = true;
+            var el = this._htmlUnlockEl || new Audio('assets/audio/papercut.mp3');
+            this._htmlUnlockEl = el;
+            el.loop = true;
+            el.preload = 'auto';
+            el.setAttribute('playsinline', 'true');
+            el.setAttribute('webkit-playsinline', 'true');
+            try { el.currentTime = 0; } catch (e) {}
+            el.volume = this._finaleVolume();
             this._finaleEl = el;
             var playFail = function () {
                 if (self._finaleEl !== el) return;
+                if (self._finaleBuffer && self.ctx) {
+                    self._playFinaleBuffer();
+                    return;
+                }
+                if (self._finaleLoading) return;
                 self.stopFinale();
                 self.playWin();
             };
@@ -303,10 +440,22 @@
             var p = el.play();
             if (p && p.catch) p.catch(playFail);
         },
-        stopFinale: function () {
+        stopFinale: function (keepWant) {
+            if (!keepWant) this._wantFinale = false;
+            if (this._finaleSource) {
+                try { this._finaleSource.stop(); } catch (e) {}
+                try { this._finaleSource.disconnect(); } catch (e2) {}
+                this._finaleSource = null;
+            }
+            if (this._finaleGain) {
+                try { this._finaleGain.disconnect(); } catch (e3) {}
+                this._finaleGain = null;
+            }
             if (!this._finaleEl) return;
-            try { this._finaleEl.pause(); } catch (e) {}
-            this._finaleEl.src = '';
+            try { this._finaleEl.pause(); } catch (e4) {}
+            if (this._finaleEl !== this._htmlUnlockEl) {
+                try { this._finaleEl.src = ''; } catch (e5) {}
+            }
             this._finaleEl = null;
         },
         playBack: function () { this._blip(midiToFreq(64), 'sine', 0.12, 0.07); },
@@ -353,6 +502,13 @@
             if (this.musicGain) {
                 this.musicGain.gain.value = on ? GameSettings.get('musicVolume') : 0;
             }
+            if (this._finaleGain) {
+                this._finaleGain.gain.value = on ? this._finaleVolume() : 0;
+            }
+            if (this._finaleEl) {
+                this._finaleEl.volume = on ? this._finaleVolume() : 0;
+            }
+            if (this._wantFinale) return;
             if (on) { this.startMusic(); } else { this.stopMusic(); }
         },
         applySfxSetting: function () {

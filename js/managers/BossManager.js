@@ -26,6 +26,7 @@ export class BossManager {
         this.ringGfx = null;
         this.vx = 0;
         this.vy = 0;
+        this.deathAnimUntil = 0;
 
         if (!this.active) return;
 
@@ -476,10 +477,15 @@ export class BossManager {
             var bar = this.colorBars[i];
             if (bar.health <= 0) continue;
             var left = field.colorArea(bar.color);
-            if (left > 280) continue;
-            bar.health = 0;
-            changed = true;
-            emptied.push(bar);
+            var cut = Math.max(0, bar.startArea - left);
+            var synced = Math.max(0, 1 - cut / Math.max(1, bar.quota));
+            var leftover = Math.max(1500, bar.startArea * 0.1);
+            if (left <= leftover) synced = 0;
+            if (synced < bar.health - 0.001) {
+                if (bar.health > 0.01 && synced <= 0.01) emptied.push(bar);
+                bar.health = synced;
+                changed = true;
+            }
         }
         if (!changed) return;
         this.health = 0;
@@ -666,47 +672,117 @@ export class BossManager {
     }
 
     _defeatEffect() {
-        this._localBurst(this.x, this.y, 0xffd24a);
-        this._localBurst(this.x, this.y, 0xffffff);
-        if (GameSettings.reducedMotion()) {
-            this.body.setVisible(false);
+        var scene = this.scene;
+        var x = this.x;
+        var y = this.y;
+        var reduced = GameSettings.reducedMotion();
+        this.deathAnimUntil = scene.time.now + (reduced ? 420 : 2800);
+        this._localBurst(x, y, 0xffd24a);
+        this._localBurst(x, y, 0xffffff);
+        if (this.body) scene.tweens.killTweensOf(this.body);
+        if (reduced) {
+            if (this.body) this.body.setVisible(false);
             if (this.fieldGfx) this.fieldGfx.setVisible(false);
             if (this.ringGfx) this.ringGfx.setVisible(false);
             return;
         }
-        this.scene.tweens.killTweensOf(this.body);
-        this.scene.tweens.add({
-            targets: this.body,
-            scale: 1.55,
-            alpha: 0,
-            angle: this.body.angle + 18,
-            duration: 480,
-            ease: 'Back.easeIn',
-            onComplete: function () {
-                if (this.body && this.body.scene) this.body.setVisible(false);
-            }.bind(this)
-        });
+        if (scene.cameras && scene.cameras.main) {
+            scene.cameras.main.flash(220, 255, 210, 90, true);
+            scene.cameras.main.shake(480, 0.018);
+        }
+        var colors = [0xff3b5c, 0xffd24a, 0xffffff, 0x4a9fff, 0xb07cff, 0x3ee6a0, 0xff78c8];
+        var i;
+        for (i = 0; i < 9; i++) {
+            scene.time.delayedCall(i * 240, function (idx) {
+                if (!scene.sys || !scene.sys.isActive()) return;
+                var tint = colors[idx % colors.length];
+                var ring = scene.add.circle(x, y, 16, tint, 0)
+                    .setStrokeStyle(10, tint, 1)
+                    .setDepth(22)
+                    .setBlendMode(Phaser.BlendModes.ADD);
+                scene.tweens.add({
+                    targets: ring,
+                    scale: 6 + idx * 0.7,
+                    alpha: 0,
+                    duration: 980,
+                    ease: 'Cubic.easeOut',
+                    onComplete: function () { if (ring && ring.destroy) ring.destroy(); }
+                });
+                if (idx % 2 === 0 && scene.cameras && scene.cameras.main) {
+                    scene.cameras.main.flash(80, 255, 170, 50, true);
+                }
+            }, [i]);
+        }
+        for (i = 0; i < 32; i++) {
+            var ang = Math.PI * 2 * i / 32;
+            var dist = Phaser.Math.Between(90, 260);
+            var shard = scene.add.rectangle(
+                x, y,
+                Phaser.Math.Between(6, 16),
+                Phaser.Math.Between(18, 46),
+                colors[i % colors.length]
+            ).setDepth(23).setBlendMode(Phaser.BlendModes.ADD);
+            scene.tweens.add({
+                targets: shard,
+                x: x + Math.cos(ang) * dist,
+                y: y + Math.sin(ang) * dist,
+                angle: Phaser.Math.Between(-480, 480),
+                alpha: 0,
+                scale: 0.15,
+                duration: Phaser.Math.Between(1100, 2100),
+                ease: 'Quad.easeOut',
+                onComplete: function (tw, targets) {
+                    if (targets[0] && targets[0].destroy) targets[0].destroy();
+                }
+            });
+        }
+        if (scene._confetti) {
+            scene._confetti(x, y, 36);
+            scene.time.delayedCall(420, function () {
+                if (scene._confetti) scene._confetti(x, y - 20, 28);
+            });
+            scene.time.delayedCall(900, function () {
+                if (scene._confetti) scene._confetti(x, y + 10, 22);
+            });
+        }
+        if (this.body) {
+            scene.tweens.add({
+                targets: this.body,
+                scale: 1.85,
+                duration: 280,
+                yoyo: true,
+                repeat: 3,
+                ease: 'Sine.easeInOut'
+            });
+            scene.tweens.add({
+                targets: this.body,
+                alpha: 0,
+                angle: this.body.angle + 38,
+                duration: 1600,
+                delay: 900,
+                ease: 'Back.easeIn',
+                onComplete: function () {
+                    if (this.body && this.body.scene) this.body.setVisible(false);
+                }.bind(this)
+            });
+        }
         if (this.fieldGfx) {
-            this.scene.tweens.add({
+            scene.tweens.add({
                 targets: this.fieldGfx,
                 alpha: 0,
-                duration: 300,
+                duration: 900,
                 onComplete: function () {
-                    if (this.fieldGfx && this.fieldGfx.scene) {
-                        this.fieldGfx.setVisible(false);
-                    }
+                    if (this.fieldGfx && this.fieldGfx.scene) this.fieldGfx.setVisible(false);
                 }.bind(this)
             });
         }
         if (this.ringGfx) {
-            this.scene.tweens.add({
+            scene.tweens.add({
                 targets: this.ringGfx,
                 alpha: 0,
-                duration: 300,
+                duration: 900,
                 onComplete: function () {
-                    if (this.ringGfx && this.ringGfx.scene) {
-                        this.ringGfx.setVisible(false);
-                    }
+                    if (this.ringGfx && this.ringGfx.scene) this.ringGfx.setVisible(false);
                 }.bind(this)
             });
         }

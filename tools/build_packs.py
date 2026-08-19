@@ -83,13 +83,13 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "cut_wall",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Нажми в любом месте — появится стик. Попробуй отрезать лист бумаги, зажимай стик и управляй движением точки",
+                    "text": "Нажми на экран — появится стик. Его удобно держать внизу, там где корзины. Зажми стик и веди точку: с рамки заезжай в бумагу и возвращайся обратно на рамку. Отрезанный кусок скомкается в корзину своего цвета.",
                 },
                 {
                     "id": "cut_keep_going",
                     "trigger": "cut",
                     "persist": "until-draw",
-                    "text": "Молодец! Режь дальше, пока корзина не заполнится.",
+                    "text": "Отлично, контур замкнулся! Режь ещё, пока корзина внизу не заполнится доверху.",
                 },
             ],
         ),
@@ -105,7 +105,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "cut_color",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "В корзину идёт цвет куска. Сначала красный, потом синий.",
+                    "text": "В корзину падает цвет того куска, который ты отрезал. Сначала нужна красная, потом синяя. Попробуй отрезать 2 цвета за 1 раз — каждый кусок уйдёт в свою корзину. Если уровень завис: пауза и рестарт. Если пропал звук — обнови страницу и зайди на тот же уровень.",
                 }
             ],
         ),
@@ -127,7 +127,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "vial_queue",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "×N — сколько корзин этого цвета ещё будет. Не срезай весь цвет сразу.",
+                    "text": "Отрезать цвет можно, только если внизу уже стоит корзина этого цвета. ×N рядом с корзиной — сколько ещё таких корзин будет потом, поэтому не срезай весь цвет сразу. Попробуй жёлтый: пока жёлтой корзины нет, он не отрежется. Это нормально.",
                 }
             ],
         ),
@@ -144,7 +144,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "enemy_pingpong",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Это враг. Наполни корзины, не касаясь его.",
+                    "text": "Красный кружок — враг. Он бегает по бумаге, и касание снимает жизнь. Наполни корзины и старайся его не задеть. Если замкнёшь контур вокруг врага, он пропадёт.",
                 }
             ],
         ),
@@ -164,7 +164,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "magnet_path",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Точка прилипнет к линии. Свайп в сторону — отлипнуть.",
+                    "text": "Светящаяся линия — дорожка. Подъедь близко: точка сама прилипнет и поедет по ней. Чтобы отлипнуть, резко свайпни стиком в сторону от линии и возвращайся на рамку.",
                 }
             ],
         ),
@@ -187,7 +187,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "boosters",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Пересеки значки — это бустеры.",
+                    "text": "Значки на поле — бустеры. Проедь по ним точкой: щит защищает от врага, молния ускоряет, сердечко даёт жизнь. Попробуй все, потом заполни корзины.",
                 }
             ],
         ),
@@ -206,7 +206,7 @@ def training_levels(lab: list[dict]) -> list[dict]:
                     "id": "constraint_time",
                     "trigger": "start",
                     "persist": "until-move",
-                    "text": "Здесь таймер. На других уровнях бывают и свои ограничения.",
+                    "text": "Этот уровень на время: сначала предупреждение, потом отсчёт 3–2–1, и только тогда пойдёт таймер. Успей заполнить корзины, пока секунды не кончились. На других уровнях вместо таймера бывают лимит срезов или свои условия.",
                 }
             ],
         ),
@@ -735,7 +735,7 @@ def neon_rails() -> list[dict]:
     ]
 
 
-def thieves(count: int, speed: float) -> list[dict]:
+def thieves(count: int, speed: float, drain_step: int = 72) -> list[dict]:
     spots = [
         (140, 220), (360, 220), (560, 220),
         (140, 380), (360, 380), (560, 380),
@@ -752,7 +752,7 @@ def thieves(count: int, speed: float) -> list[dict]:
             "vx": 24 if i % 2 == 0 else -22,
             "vy": -18 if i % 3 == 0 else 20,
             "speed": speed,
-            "drainStep": 72,
+            "drainStep": drain_step,
             "noticeInterval": 4000,
         })
     return out
@@ -820,7 +820,7 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             name="Витраж",
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}, {"color": "green"}],
             polygons=stained,
-            constraints={"maxCuts": 2, "winCondition": "vials"},
+            constraints={"maxCuts": 3, "winCondition": "vials"},
         ),
         base(
             id=2,
@@ -828,7 +828,7 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             name="Раскол",
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "red"}],
             polygons=split,
-            constraints={"maxCuts": 1, "winCondition": "vials"},
+            constraints={"maxCuts": 2, "winCondition": "vials"},
         ),
         base(
             id=3,
@@ -893,8 +893,16 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             pack="campaign",
             name="Союзник",
             vials=[{"color": "red"}, {"color": "blue"}, {"color": "yellow"}],
-            enemies=thieves(6, 64),
-            polygons=three_blocks,
+            enemies=thieves(6, 64, 96),
+            polygons=[
+                poly("poly_red_1", "red", 68, 158, 184, 584),
+                poly("poly_blue_1", "blue", 268, 158, 184, 584),
+                poly("poly_yellow_1", "yellow", 468, 158, 184, 584),
+            ],
+            claimed=[
+                poly("gap_1", "paper", 252, 158, 16, 584),
+                poly("gap_2", "paper", 452, 158, 16, 584),
+            ],
         ),
         base(
             id=8,
@@ -926,10 +934,10 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
                 {"color": "green"}, {"color": "purple"},
             ],
             enemies=[
-                {"type": "turret", "x": 140, "y": 220, "shotInterval": 2600, "bulletSpeed": 120, "initialDelay": 400},
-                {"type": "turret", "x": 560, "y": 220, "shotInterval": 2700, "bulletSpeed": 120, "initialDelay": 800},
-                {"type": "turret", "x": 140, "y": 660, "shotInterval": 2800, "bulletSpeed": 120, "initialDelay": 1200},
-                {"type": "turret", "x": 560, "y": 660, "shotInterval": 2500, "bulletSpeed": 120, "initialDelay": 600},
+                {"type": "turret", "x": 140, "y": 220, "shotInterval": 2600, "bulletSpeed": 120, "initialDelay": 3600},
+                {"type": "turret", "x": 560, "y": 220, "shotInterval": 2700, "bulletSpeed": 120, "initialDelay": 4000},
+                {"type": "turret", "x": 140, "y": 660, "shotInterval": 2800, "bulletSpeed": 120, "initialDelay": 4400},
+                {"type": "turret", "x": 560, "y": 660, "shotInterval": 2500, "bulletSpeed": 120, "initialDelay": 3800},
                 {"type": "laser", "x": 200, "y": 220, "angle": 90, "length": 260, "interval": 4000, "warning": 1200, "activeTime": 650, "phase": 200},
                 {"type": "laser", "x": 500, "y": 220, "angle": 90, "length": 260, "interval": 4200, "warning": 1200, "activeTime": 650, "phase": 900},
                 {"type": "laser", "x": 250, "y": 700, "angle": 270, "length": 240, "interval": 4100, "warning": 1200, "activeTime": 650, "phase": 1500},

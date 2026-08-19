@@ -203,6 +203,21 @@ export class BoosterManager {
         this._updateEffects(player, enemies);
     }
 
+    grantShield(ms) {
+        var now = this.scene.time.now;
+        this.scene.shieldUntil = Math.max(
+            this.scene.shieldUntil || 0,
+            now + (ms || 2000)
+        );
+        this._addEffect({
+            type: 'shield',
+            expires: this.scene.shieldUntil
+        });
+        if (this.scene.player) {
+            this._updateEffects(this.scene.player, this.scene.enemies || []);
+        }
+    }
+
     _addEffect(effect) {
         // Повторный эффект того же типа заменяет старый и продлевает таймер.
         for (var i = this.effects.length - 1; i >= 0; i--) {
