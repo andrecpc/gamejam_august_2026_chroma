@@ -265,7 +265,7 @@
 
     function pulpSpecks(g, cx, cy, w, h, seed, color) {
         var area = Math.max(400, w * h);
-        var step = Math.max(28, Math.round(Math.sqrt(area) / 7));
+        var step = Math.max(18, Math.round(Math.sqrt(area) / 9));
         var x0 = Math.floor((cx - w * 0.44) / step) * step;
         var y0 = Math.floor((cy - h * 0.44) / step) * step;
         var x1 = cx + w * 0.44;
@@ -276,8 +276,8 @@
             for (y = y0; y < y1; y += step) {
                 var q = ((Math.floor(x) * 131) ^ (Math.floor(y) * 17) ^ seed) >>> 0;
                 var hsh = ((q * 1103515245 + 12345) >>> 16) / 65536;
-                if (hsh < 0.34) continue;
-                g.fillStyle(hsh > 0.7 ? lighten(color, 0.18) : darken(color, 0.14), 0.16);
+                if (hsh < 0.22) continue;
+                g.fillStyle(hsh > 0.7 ? lighten(color, 0.14) : darken(color, 0.16), 0.2);
                 g.fillEllipse(
                     x + (hsh - 0.5) * 9,
                     y + ((hsh * 13) % 1 - 0.5) * 9,
@@ -311,14 +311,39 @@
         }
     }
 
+    function fiberStrokes(g, cx, cy, w, h, seed, color) {
+        var rand = mulberry32(seed ^ 0xa5a5);
+        var n = Math.max(18, Math.round((w * h) / 2200));
+        var i;
+        for (i = 0; i < n; i++) {
+            var x = cx + (rand() - 0.5) * w * 0.86;
+            var y = cy + (rand() - 0.5) * h * 0.86;
+            g.lineStyle(0.55 + rand() * 0.7, darken(color, 0.22), 0.16 + rand() * 0.14);
+            g.beginPath();
+            g.moveTo(x, y);
+            g.lineTo(x + (rand() - 0.5) * 22, y + (rand() - 0.38) * 7);
+            g.strokePath();
+        }
+        for (i = 0; i < Math.round(n * 0.35); i++) {
+            var hx = cx + (rand() - 0.5) * w * 0.8;
+            var hy = cy + (rand() - 0.5) * h * 0.8;
+            g.fillStyle(lighten(color, 0.2), 0.12);
+            g.fillEllipse(hx, hy, 1.2 + rand() * 2.4, 0.7 + rand());
+        }
+    }
+
     function deckleWhiskers(g, pts, seed) {
         var i;
-        for (i = 0; i < pts.length; i += 2) {
+        for (i = 0; i < pts.length; i++) {
             var p = pts[i];
             var jag = worldTear(p.x, p.y, seed);
-            if (jag < 0.98) continue;
-            g.fillStyle(0xf7f1e6, 0.95);
-            g.fillEllipse(p.x, p.y, 3.5 + jag * 3.5, 1.6 + jag * 1.8);
+            if (jag < 0.9 && i % 2) continue;
+            g.fillStyle(0xf7f1e6, 0.96);
+            g.fillEllipse(p.x, p.y, 4.2 + jag * 4.4, 1.8 + jag * 2.2);
+            if (jag > 1.05) {
+                g.fillStyle(0xffffff, 0.7);
+                g.fillEllipse(p.x - 1.2, p.y - 0.8, 2.4 + jag, 1.2);
+            }
         }
     }
 
@@ -466,21 +491,26 @@
             return dense;
         },
 
-        drawColorPiece: function (g, points, color, seed) {
+        drawColorPiece: function (g, points, color, seed, opts) {
             if (!points || points.length < 3) return;
+            opts = opts || {};
             seed = seed >>> 0;
             color = craftColor(color);
-            var rim = this.tearPoly(points, seed, -1);
-            var body = this.tearPoly(points, seed + 19, -5);
+            if (opts.matchField) color = darken(color, 0.11);
+            var lift = opts.lift ? 1.7 : 1;
+            var rim = this.tearPoly(points, seed, 3);
+            var body = this.tearPoly(points, seed + 19, -4);
             if (!body.length || !rim.length) {
                 rim = points;
                 body = points;
             }
-            g.fillStyle(0x061428, 0.2);
-            fillPts(g, shiftPts(rim, 8, 11));
-            g.fillStyle(0x061428, 0.48);
-            fillPts(g, shiftPts(body, 5, 7));
-            g.fillStyle(0xf4ead8, 1);
+            g.fillStyle(0x061428, 0.12);
+            fillPts(g, shiftPts(rim, Math.round(12 * lift), Math.round(16 * lift)));
+            g.fillStyle(0x061428, 0.22);
+            fillPts(g, shiftPts(rim, Math.round(8 * lift), Math.round(11 * lift)));
+            g.fillStyle(0x061428, 0.5);
+            fillPts(g, shiftPts(body, Math.round(5 * lift), Math.round(7 * lift)));
+            g.fillStyle(0xf7f1e6, 1);
             fillPts(g, rim);
             deckleWhiskers(g, rim, seed);
             g.fillStyle(darken(color, 0.12), 1);
@@ -490,6 +520,49 @@
             var box = boundsOf(body);
             pulpSpecks(g, box.cx, box.cy, box.w, box.h, seed, color);
             paperMottle(g, box.cx, box.cy, box.w, box.h, seed, color);
+            fiberStrokes(g, box.cx, box.cy, box.w, box.h, seed, color);
+        },
+
+        drawCutDeckle: function (g, pts, seed) {
+            if (!pts || pts.length < 2) return;
+            seed = (seed || 91) >>> 0;
+            var i;
+            for (i = 1; i < pts.length; i++) {
+                var x0 = pts[i - 1].x;
+                var y0 = pts[i - 1].y;
+                var x1 = pts[i].x;
+                var y1 = pts[i].y;
+                var dx = x1 - x0;
+                var dy = y1 - y0;
+                var len = Math.sqrt(dx * dx + dy * dy);
+                if (len < 1.5) continue;
+                var ux = dx / len;
+                var uy = dy / len;
+                var px = -uy;
+                var py = ux;
+                var t = 0;
+                while (t < len) {
+                    var jag = worldTear(x0 + ux * t, y0 + uy * t, seed);
+                    var off = (jag - 0.92) * 5;
+                    g.fillStyle(0xf7f1e6, 0.95);
+                    g.fillEllipse(
+                        x0 + ux * t + px * off,
+                        y0 + uy * t + py * off,
+                        5.2 + jag * 3.2,
+                        2.1 + jag * 1.4
+                    );
+                    if (jag > 1.02) {
+                        g.fillStyle(0xffffff, 0.75);
+                        g.fillEllipse(
+                            x0 + ux * t + px * (off + 1.4),
+                            y0 + uy * t + py * (off + 1.4),
+                            2.6,
+                            1.3
+                        );
+                    }
+                    t += 3.4 + jag * 2.6;
+                }
+            }
         },
 
         drawCrumple: function (g, x, y, r, color, seed) {
@@ -652,10 +725,7 @@
             return g;
         },
 
-        addStar: function (scene, x, y, r, seed, depth) {
-            var d = depth == null ? -70 : depth;
-            var g = scene.add.graphics();
-            g.setDepth(d);
+        drawStar: function (g, x, y, r, seed) {
             var rand = mulberry32((seed || 1) >>> 0);
             var pts = [];
             var deckle = [];
@@ -682,6 +752,12 @@
             g.fillStyle(0xffe37a, 0.42);
             g.fillEllipse(x - r * 0.18, y - r * 0.22, r * 0.42, r * 0.28);
             pulpSpecks(g, x, y, r * 2.2, r * 2.2, seed || 1, 0xf0c107);
+        },
+
+        addStar: function (scene, x, y, r, seed, depth) {
+            var g = scene.add.graphics();
+            g.setDepth(depth == null ? -70 : depth);
+            this.drawStar(g, x, y, r, seed);
             return g;
         },
 

@@ -37,6 +37,7 @@
 
     var TEMPO = 82;                       // ударов в минуту
     var BOSS_TEMPO = 112;
+    var DESTROY_TEMPO = 156;
     var SPB = 60 / TEMPO;                 // секунд на удар
     var STEP = SPB / 2;                   // восьмая нота — шаг арпеджио
     var STEPS_PER_BAR = 8;                // восьмых в такте
@@ -69,22 +70,20 @@
             this.sfxGain.connect(this.ctx.destination);
         },
 
-        // Вызывается по первому касанию — «будит» звук и стартует музыку
+        // Будит AudioContext. Не перезапускает музыку — иначе клики
+        // наслаивают пэды и арпеджио друг на друга.
         resume: function () {
             this._ensureContext();
             if (this.ctx && this.ctx.state === 'suspended') {
                 this.ctx.resume();
             }
             this.unlockHtmlAudio();
-            this.preloadFinale();
-            if (this._wantFinale || this._finaleSource || this._finaleEl) {
+            if (this._wantFinale) {
+                this.preloadFinale();
                 this._playFinaleNow();
                 return;
             }
-            if (GameSettings.get('musicOn')) {
-                if (this._started && this.ctx) {
-                    this._nextNoteTime = this.ctx.currentTime + 0.05;
-                }
+            if (GameSettings.get('musicOn') && !this._started) {
                 this.startMusic();
             }
         },
@@ -104,8 +103,6 @@
                 var p = el.play();
                 var done = function () {
                     try { el.pause(); el.currentTime = 0; } catch (e) {}
-                    el.muted = false;
-                    el.volume = 1;
                     self._htmlUnlocked = true;
                 };
                 if (p && p.then) p.then(done).catch(function () {});
@@ -158,15 +155,15 @@
             if (this._wantFinale || this._finaleSource || this._finaleEl) return;
             if (mode) this._desiredMode = mode;
             var next = this._desiredMode || 'normal';
-            if (this._started && this._musicMode === next) {
-                this._nextNoteTime = Math.max(this._nextNoteTime || 0, this.ctx.currentTime + 0.05);
+            if (this._started && this._schedulerId && this._musicMode === next) {
                 return;
             }
             this.stopMusic();
+            this._cutMusicTail();
             this._musicMode = next;
             this._started = true;
             this._step = 0;
-            this._nextNoteTime = this.ctx.currentTime + 0.1;
+            this._nextNoteTime = this.ctx.currentTime + (next === 'destroy' ? 0.16 : 0.1);
             var self = this;
             // Планировщик с «заглядыванием вперёд»: раз в 25 мс подкидываем
             // ноты, которые должны прозвучать в ближайшие 100 мс.
@@ -183,17 +180,37 @@
             }
         },
 
+        _cutMusicTail: function () {
+            if (!this.musicGain || !this.ctx) return;
+            var t = this.ctx.currentTime;
+            var vol = GameSettings.get('musicOn') ? (GameSettings.get('musicVolume') || 0) : 0;
+            try {
+                this.musicGain.gain.cancelScheduledValues(t);
+                this.musicGain.gain.setValueAtTime(Math.max(0.0001, this.musicGain.gain.value), t);
+                this.musicGain.gain.linearRampToValueAtTime(0.0001, t + 0.07);
+                this.musicGain.gain.linearRampToValueAtTime(Math.max(0.0001, vol), t + 0.18);
+            } catch (e) {}
+        },
+
         _stepDuration: function () {
-            var tempo = this._musicMode === 'boss' ? BOSS_TEMPO : TEMPO;
+            var tempo = TEMPO;
+            if (this._musicMode === 'boss') tempo = BOSS_TEMPO;
+            else if (this._musicMode === 'destroy') tempo = DESTROY_TEMPO;
             return (60 / tempo) / 2;
         },
 
         _scheduler: function () {
             if (!this.ctx) return;
             var stepDur = this._stepDuration();
-            var loop = this._musicMode === 'boss'
-                ? STEPS_PER_BAR * BOSS_PROGRESSION.length
-                : TOTAL_STEPS;
+            var loop = TOTAL_STEPS;
+            if (this._musicMode === 'boss') {
+                loop = STEPS_PER_BAR * BOSS_PROGRESSION.length;
+            } else if (this._musicMode === 'destroy') {
+                loop = 16;
+            }
+            if (this._nextNoteTime < this.ctx.currentTime - 0.02) {
+                this._nextNoteTime = this.ctx.currentTime;
+            }
             while (this._nextNoteTime < this.ctx.currentTime + 0.1) {
                 this._scheduleStep(this._step, this._nextNoteTime);
                 this._nextNoteTime += stepDur;
@@ -202,6 +219,10 @@
         },
 
         _scheduleStep: function (step, time) {
+            if (this._musicMode === 'destroy') {
+                this._scheduleDestroy(step, time);
+                return;
+            }
             var boss = this._musicMode === 'boss';
             var progression = boss ? BOSS_PROGRESSION : PROGRESSION;
             var bar = Math.floor(step / STEPS_PER_BAR) % progression.length;
@@ -226,6 +247,62 @@
             } else if (step % 4 !== 3) {
                 this._pluck(freq, time, false);
             }
+        },
+
+        _scheduleDestroy: function (step, time) {
+            var beat = step % 8;
+            var from = 1280 + (step % 6) * 220;
+            var to = 180 + (step % 4) * 55;
+            if (beat % 2 === 0) {
+                this._musicSweep(from, to, 'sawtooth', 0.12, 0.075, time);
+            } else {
+                this._musicSweep(from * 0.72, to + 80, 'square', 0.08, 0.045, time);
+            }
+            if (beat === 0 || beat === 3 || beat === 6) {
+                this._musicBoom(time, 0.16, 720 + (step % 3) * 160, 0.11);
+            }
+            if (beat === 2 || beat === 5) {
+                this._pluck(midiToFreq(84 + (step % 4)), time, true);
+            }
+        },
+
+        _musicSweep: function (from, to, type, dur, vol, time) {
+            if (!this.ctx || !this.musicGain) return;
+            var osc = this.ctx.createOscillator();
+            var g = this.ctx.createGain();
+            osc.type = type || 'sawtooth';
+            osc.frequency.setValueAtTime(Math.max(40, from), time);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(40, to), time + dur);
+            g.gain.setValueAtTime(0.0001, time);
+            g.gain.linearRampToValueAtTime(vol, time + 0.008);
+            g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+            osc.connect(g);
+            g.connect(this.musicGain);
+            osc.start(time);
+            osc.stop(time + dur + 0.03);
+        },
+
+        _musicBoom: function (time, dur, freq, vol) {
+            if (!this.ctx || !this.musicGain) return;
+            var src = this.ctx.createBufferSource();
+            src.buffer = this._noiseBuffer();
+            var hp = this.ctx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 420;
+            var bp = this.ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.frequency.value = freq;
+            bp.Q.value = 0.7;
+            var g = this.ctx.createGain();
+            g.gain.setValueAtTime(0.0001, time);
+            g.gain.linearRampToValueAtTime(vol, time + 0.006);
+            g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+            src.connect(hp);
+            hp.connect(bp);
+            bp.connect(g);
+            g.connect(this.musicGain);
+            src.start(time);
+            src.stop(time + dur + 0.02);
         },
 
         // Долгий пэд с плавной атакой и затуханием
@@ -301,30 +378,41 @@
             osc.stop(t + dur + 0.03);
         },
 
-        _noiseBuffer: function () {
-            if (this._noise) return this._noise;
+        _noiseBuffer: function (seconds) {
+            var key = seconds > 0.5 ? '_noiseLong' : '_noise';
+            if (this[key]) return this[key];
             var sr = this.ctx.sampleRate;
-            var n = Math.floor(sr * 0.35);
+            var n = Math.floor(sr * (seconds || 0.35));
             var buf = this.ctx.createBuffer(1, n, sr);
             var data = buf.getChannelData(0);
             var i;
-            for (i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
-            this._noise = buf;
+            var prev = 0;
+            for (i = 0; i < n; i++) {
+                var white = Math.random() * 2 - 1;
+                prev = prev * 0.32 + white * 0.68;
+                data[i] = white * 0.72 + prev * 0.28;
+            }
+            this[key] = buf;
             return buf;
         },
 
-        _noiseBurst: function (time, dur, freq, q, vol) {
+        _noiseBurst: function (time, dur, freq, q, vol, rate) {
             var src = this.ctx.createBufferSource();
             src.buffer = this._noiseBuffer();
+            src.playbackRate.value = rate || 1;
+            var hp = this.ctx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 900;
             var filter = this.ctx.createBiquadFilter();
             filter.type = 'bandpass';
             filter.frequency.value = freq;
             filter.Q.value = q == null ? 1.1 : q;
             var g = this.ctx.createGain();
             g.gain.setValueAtTime(0.0001, time);
-            g.gain.linearRampToValueAtTime(vol, time + 0.006);
+            g.gain.linearRampToValueAtTime(vol, time + 0.004);
             g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-            src.connect(filter);
+            src.connect(hp);
+            hp.connect(filter);
             filter.connect(g);
             g.connect(this.sfxGain);
             src.start(time);
@@ -362,6 +450,7 @@
             this._wantFinale = true;
             this._ensureContext();
             this.stopMusic();
+            this._cutMusicTail();
             this.preloadFinale();
             this._playFinaleNow();
         },
@@ -424,6 +513,7 @@
             el.setAttribute('playsinline', 'true');
             el.setAttribute('webkit-playsinline', 'true');
             try { el.currentTime = 0; } catch (e) {}
+            el.muted = false;
             el.volume = this._finaleVolume();
             this._finaleEl = el;
             var playFail = function () {
@@ -463,16 +553,23 @@
             this._ensureContext();
             if (!this.ctx) return;
             var t = this.ctx.currentTime;
-            this._noiseBurst(t, 0.07, 1800, 0.8, 0.2);
-            this._noiseBurst(t + 0.03, 0.09, 1100, 1.0, 0.18);
-            this._noiseBurst(t + 0.06, 0.11, 640, 0.9, 0.16);
-            this._sweep(420, 160, 'triangle', 0.12, 0.05);
+            var pitch = 0.92 + Math.random() * 0.16;
+            this._noiseBurst(t, 0.038, 4800 * pitch, 1.7, 0.24, pitch);
+            this._noiseBurst(t + 0.014, 0.05, 2800 * pitch, 1.35, 0.18, pitch);
+            this._blip(2100 * pitch, 'triangle', 0.045, 0.07);
+            this._sweep(2600 * pitch, 980 * pitch, 'sine', 0.07, 0.045);
         },
         playPour: function () {
-            this._sweep(310, 145, 'sine', 0.24, 0.2);
-            var self = this;
-            setTimeout(function () { self._blip(430, 'sine', 0.07, 0.11); }, 65);
-            setTimeout(function () { self._blip(520, 'sine', 0.06, 0.08); }, 125);
+            this.playBasketLand();
+        },
+        playBasketLand: function () {
+            this._ensureContext();
+            if (!this.ctx) return;
+            var t = this.ctx.currentTime;
+            var pitch = 0.93 + Math.random() * 0.14;
+            this._noiseBurst(t, 0.06, 1400 * pitch, 1.2, 0.2, pitch);
+            this._noiseBurst(t + 0.02, 0.08, 900 * pitch, 0.9, 0.14, pitch);
+            this._blip(620 * pitch, 'sine', 0.07, 0.06);
         },
         playPork: function () {
             this.playRustle();
@@ -481,9 +578,10 @@
             this._ensureContext();
             if (!this.ctx) return;
             var t = this.ctx.currentTime;
-            this._noiseBurst(t, 0.045, 2400, 1.4, 0.16);
-            this._noiseBurst(t + 0.03, 0.05, 1500, 1.1, 0.14);
-            this._noiseBurst(t + 0.055, 0.06, 900, 0.9, 0.1);
+            var pitch = 0.92 + Math.random() * 0.16;
+            this._noiseBurst(t, 0.05, 3400 * pitch, 1.5, 0.18, pitch);
+            this._noiseBurst(t + 0.028, 0.07, 2100 * pitch, 1.15, 0.14, pitch);
+            this._noiseBurst(t + 0.05, 0.08, 1250 * pitch, 0.95, 0.1, pitch);
         },
         playError: function () { this._blip(160, 'square', 0.14, 0.22); },
         playHit: function () {

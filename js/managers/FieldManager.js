@@ -55,7 +55,7 @@ export class FieldManager {
                 b.h + 44,
                 0xe6d8c0,
                 77,
-                { jag: 11, shadowX: 22, shadowY: 30, fibers: 'light' }
+                { jag: 11, shadowX: 26, shadowY: 36, fibers: 'light' }
             );
             this.paper = Paper.overlayFiber(scene, cx, cy, b.w + 44, b.h + 44, 77, {
                 depth: 0.5,
@@ -232,7 +232,7 @@ export class FieldManager {
         var fail = function (reason) {
             return { ok: false, reason: reason, pieces: [], captured: [], buffer: [], trapped: [] };
         };
-        if (!trail || trail.length < 3 || polylineLength(trail) < 36) return fail('no-split');
+        if (!trail || trail.length < 3 || polylineLength(trail) < 18) return fail('no-split');
 
         var unclaimed = unionPolys(this.colors.map(function (c) { return c.points; }), true);
         if (!unclaimed.length) return fail('no-split');
@@ -249,11 +249,18 @@ export class FieldManager {
         var i;
 
         var extended = extendEnds(trail, 80);
-        var split = this._splitUntilSevered(working, extended);
-        var parts = (split.parts || []).filter(function (p) {
-            return polygonArea(p) >= SLIVER_AREA;
-        });
-        var buffer = split.buffer || [];
+        var trailsToTry = [extended, trail];
+        var split = { parts: working.slice(), buffer: [] };
+        var parts = [];
+        var buffer = [];
+        for (i = 0; i < trailsToTry.length; i++) {
+            split = this._splitUntilSevered(working, trailsToTry[i]);
+            parts = (split.parts || []).filter(function (p) {
+                return polygonArea(p) >= SLIVER_AREA;
+            });
+            buffer = split.buffer || [];
+            if (parts.length >= 2) break;
+        }
 
         if (parts.length < 2) {
             var looped = this._loopsFromTrail(working, trail, unclaimedArea);
@@ -272,17 +279,20 @@ export class FieldManager {
                 }
             }
             colorHits.sort(function (a, b) { return b.hits - a.hits; });
-            for (i = 0; i < colorHits.length; i++) {
-                split = this._splitUntilSevered([colorHits[i].points], extended);
-                var colorParts = (split.parts || []).filter(function (p) {
-                    return polygonArea(p) >= SLIVER_AREA;
-                });
-                if (colorParts.length >= 2) {
-                    parts = colorParts;
-                    buffer = split.buffer || buffer;
-                    working = [colorHits[i].points];
-                    unclaimedArea = polygonArea(colorHits[i].points);
-                    break;
+            var t;
+            for (i = 0; i < colorHits.length && parts.length < 2; i++) {
+                for (t = 0; t < trailsToTry.length; t++) {
+                    split = this._splitUntilSevered([colorHits[i].points], trailsToTry[t]);
+                    var colorParts = (split.parts || []).filter(function (p) {
+                        return polygonArea(p) >= SLIVER_AREA;
+                    });
+                    if (colorParts.length >= 2) {
+                        parts = colorParts;
+                        buffer = split.buffer || buffer;
+                        working = [colorHits[i].points];
+                        unclaimedArea = polygonArea(colorHits[i].points);
+                        break;
+                    }
                 }
             }
         }
@@ -384,8 +394,8 @@ export class FieldManager {
         if (!trail || !poly) return 0;
         var hits = 0;
         for (var j = 1; j < trail.length - 1; j++) {
-            if (pointInPolygon(trail[j].x, trail[j].y, poly)) hits += 2;
-            else if (this._nearPoly(trail[j].x, trail[j].y, poly, 12)) hits += 1;
+            if (pointInPolygon(trail[j].x, trail[j].y, poly)) hits += 3;
+            else if (this._nearPoly(trail[j].x, trail[j].y, poly, 8)) hits += 1;
         }
         return hits;
     }
@@ -400,7 +410,7 @@ export class FieldManager {
     }
 
     _splitUntilSevered(unclaimed, trail) {
-        var widths = [3, 5, 7, 10, 14, 20];
+        var widths = [2, 3, 5, 7, 10, 14, 20];
         var last = { parts: unclaimed.slice(), buffer: [] };
         var i;
         for (i = 0; i < widths.length; i++) {
@@ -735,24 +745,33 @@ export class FieldManager {
 
     _ensureColorGrain() {
         if (this.colorGrain) return;
-        var key = this.scene.textures.exists('paper-pulp') ? 'paper-pulp'
-            : (this.scene.textures.exists('paper-kraft') ? 'paper-kraft' : null);
-        if (!key) return;
         var b = this.bounds;
+        var kraft = this.scene.textures.exists('paper-kraft') ? 'paper-kraft' : null;
+        var fiber = this.scene.textures.exists('paper-fiber') ? 'paper-fiber'
+            : (this.scene.textures.exists('paper-pulp') ? 'paper-pulp' : null);
+        var key = kraft || fiber;
+        if (!key) return;
         this.colorGrain = this.scene.add.tileSprite(
             b.x + b.w / 2,
             b.y + b.h / 2,
             b.w,
             b.h,
-            key
+            kraft || key
         );
         this.colorGrain.setDepth(1.78);
-        if (key === 'paper-kraft') {
-            this.colorGrain.setBlendMode(Phaser.BlendModes.MULTIPLY);
-            this.colorGrain.setAlpha(0.32);
-        } else {
-            this.colorGrain.setBlendMode(Phaser.BlendModes.OVERLAY);
-            this.colorGrain.setAlpha(0.42);
+        this.colorGrain.setBlendMode(Phaser.BlendModes.MULTIPLY);
+        this.colorGrain.setAlpha(kraft ? 0.3 : 0.28);
+        if (fiber && kraft) {
+            this.colorFiber = this.scene.add.tileSprite(
+                b.x + b.w / 2,
+                b.y + b.h / 2,
+                b.w,
+                b.h,
+                fiber
+            );
+            this.colorFiber.setDepth(1.79);
+            this.colorFiber.setBlendMode(Phaser.BlendModes.OVERLAY);
+            this.colorFiber.setAlpha(0.22);
         }
         this.grainMaskG = this.scene.make.graphics({ add: false });
     }
@@ -774,11 +793,18 @@ export class FieldManager {
             this.grainMaskG.fillPath();
         }
         if (this.colorGrain.mask) this.colorGrain.clearMask(true);
+        if (this.colorFiber && this.colorFiber.mask) this.colorFiber.clearMask(true);
         if (this.colors.length) {
+            var mask = this.grainMaskG.createGeometryMask();
             this.colorGrain.setVisible(true);
-            this.colorGrain.setMask(this.grainMaskG.createGeometryMask());
+            this.colorGrain.setMask(mask);
+            if (this.colorFiber) {
+                this.colorFiber.setVisible(true);
+                this.colorFiber.setMask(this.grainMaskG.createGeometryMask());
+            }
         } else {
             this.colorGrain.setVisible(false);
+            if (this.colorFiber) this.colorFiber.setVisible(false);
         }
     }
 
@@ -820,10 +846,15 @@ export class FieldManager {
             if (this.colorGrain.mask) this.colorGrain.clearMask(true);
             this.colorGrain.destroy();
         }
+        if (this.colorFiber) {
+            if (this.colorFiber.mask) this.colorFiber.clearMask(true);
+            this.colorFiber.destroy();
+        }
         if (this.grainMaskG && this.grainMaskG.destroy) this.grainMaskG.destroy();
         this.sheet = null;
         this.paper = null;
         this.colorGrain = null;
+        this.colorFiber = null;
         this.grainMaskG = null;
     }
 }

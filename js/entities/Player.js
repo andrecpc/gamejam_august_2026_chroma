@@ -159,6 +159,8 @@ export class Player {
             this.glow.setBlendMode(Phaser.BlendModes.ADD);
         }
         this.glow.setDepth(8);
+        this.groundShadow = scene.add.ellipse(x + 7, y + 12, 30, 12, 0x061428, 0.34);
+        this.groundShadow.setDepth(6.6);
         this.dot = this._createDot(scene, x, y);
         this.dot.setDepth(9);
         this.shieldRing = scene.add.circle(x, y, 23, 0x55eaff, 0.06);
@@ -420,6 +422,12 @@ export class Player {
         this.dot.setPosition(this.x, this.y);
         this.glow.setPosition(this.x, this.y);
         this.shieldRing.setPosition(this.x, this.y);
+        if (this.groundShadow) {
+            var lift = this.drawing ? 1 : 0;
+            this.groundShadow.setPosition(this.x + 7 + lift * 4, this.y + 12 + lift * 5);
+            this.groundShadow.setScale(1 + lift * 0.18, 1 - lift * 0.12);
+            this.groundShadow.setAlpha(this.drawing ? 0.22 : 0.34);
+        }
         if (this.skin.shape === 'saw' || this.skin.shape === 'saber' ||
             this.skin.shape === 'comet' || this.skin.shape === 'unicorn') {
             this.dot.setRotation(this.facing);
@@ -459,6 +467,7 @@ export class Player {
         if (this.trail.length >= 2) {
             strokeDashedPolyline(g, this.trail, 16, 10, 9, 0x1a120c, 0.7);
             strokeDashedPolyline(g, this.trail, 16, 10, 6, 0xffffff, 1);
+            this._drawTrailCrumbs(g);
         }
         if (rainbow && this.wake.length >= 2) {
             var w;
@@ -484,9 +493,33 @@ export class Player {
         }
     }
 
+    _drawTrailCrumbs(g) {
+        var pts = this.trail;
+        var acc = 0;
+        var i;
+        for (i = 1; i < pts.length; i++) {
+            var dx = pts[i].x - pts[i - 1].x;
+            var dy = pts[i].y - pts[i - 1].y;
+            var len = Math.sqrt(dx * dx + dy * dy);
+            acc += len;
+            if (acc < 9) continue;
+            acc = 0;
+            var nx = len > 0.2 ? -dy / len : 0;
+            var ny = len > 0.2 ? dx / len : 0;
+            var side = (i % 2 ? 1 : -1) * (2.4 + (i % 3));
+            g.fillStyle(0xf7f1e6, 0.9);
+            g.fillEllipse(pts[i].x + nx * side, pts[i].y + ny * side, 3.6, 2);
+            if (i % 3 === 0) {
+                g.fillStyle(0xffffff, 0.7);
+                g.fillCircle(pts[i].x - nx * side * 0.6, pts[i].y - ny * side * 0.6, 1.3);
+            }
+        }
+    }
+
     destroy() {
         this.dot.destroy();
         this.glow.destroy();
+        if (this.groundShadow) this.groundShadow.destroy();
         this.shieldRing.destroy();
         this.trailGfx.destroy();
     }

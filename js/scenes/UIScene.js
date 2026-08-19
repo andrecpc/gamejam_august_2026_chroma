@@ -1,4 +1,4 @@
-import { Vial } from '../entities/Vial.js?v=1.7.0';
+import { Vial } from '../entities/Vial.js?v=1.7.17';
 import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
 
 export class UIScene extends Phaser.Scene {
@@ -633,6 +633,8 @@ export class UIScene extends Phaser.Scene {
         if (last) delete this._flights[id];
         this._onSplash(data);
         var slot = this._slotById(id);
+        if (slot && slot.juicyCatch) slot.juicyCatch();
+        this._basketBurst(data);
         if (slot && data.fill != null) slot.setFill(data.fill);
         if (window.AudioManager && AudioManager.playPour) AudioManager.playPour();
         if (data.popped && last) {
@@ -783,6 +785,36 @@ export class UIScene extends Phaser.Scene {
                 alpha: 0,
                 duration: Phaser.Math.Between(280, 420),
                 ease: 'Quad.easeIn',
+                onComplete: function (tw, targets) { targets[0].destroy(); }
+            });
+        }
+    }
+
+    _basketBurst(data) {
+        var paletteColor = this.palette[data.color] || 0x72f5ff;
+        var color = typeof paletteColor === 'number'
+            ? paletteColor
+            : Phaser.Display.Color.HexStringToColor(paletteColor).color;
+        var target = (data.x !== undefined && data.y !== undefined)
+            ? { x: data.x, y: data.y }
+            : this.getVialTarget(data.vialId);
+        if (!target) return;
+        var count = GameSettings.reducedMotion() ? 4 : 12;
+        var i;
+        for (i = 0; i < count; i++) {
+            var w = Phaser.Math.Between(5, 9);
+            var h = Phaser.Math.Between(10, 18);
+            var bit = this.add.rectangle(target.x, target.y - 18, w, h, i % 3 ? color : 0xf7f1e6, 0.95)
+                .setDepth(46)
+                .setAngle(Phaser.Math.Between(-40, 40));
+            this.tweens.add({
+                targets: bit,
+                x: target.x + Phaser.Math.Between(-54, 54),
+                y: target.y - Phaser.Math.Between(36, 92),
+                angle: bit.angle + Phaser.Math.Between(-180, 180),
+                alpha: 0,
+                duration: Phaser.Math.Between(320, 520),
+                ease: 'Quad.easeOut',
                 onComplete: function (tw, targets) { targets[0].destroy(); }
             });
         }
@@ -1089,6 +1121,8 @@ export class UIScene extends Phaser.Scene {
             wordWrap: { width: 520 }
         }).setOrigin(0.5).setScale(0.72);
         overlay.add(titleText);
+        if (win) this._popWinStars(overlay, W / 2, titleY - 78);
+        if (win) this._startWinSerpentine();
         if (extra.subtitle) {
             overlay.add(this.add.text(W / 2, extra.finale ? H * 0.335 : H * 0.36, extra.subtitle, {
                 fontFamily: 'Arial, sans-serif',
@@ -1166,7 +1200,111 @@ export class UIScene extends Phaser.Scene {
         });
     }
 
+    _popWinStars(overlay, cx, cy) {
+        if (!window.Paper || !Paper.drawStar) return;
+        var reduced = GameSettings.reducedMotion();
+        var sizes = [20, 28, 20];
+        var xs = [cx - 102, cx, cx + 102];
+        var self = this;
+        var i;
+        for (i = 0; i < 3; i++) {
+            var star = this.add.graphics();
+            Paper.drawStar(star, 0, 0, sizes[i], 41 + i);
+            star.setPosition(xs[i], cy);
+            overlay.add(star);
+            if (reduced) {
+                star.setScale(1);
+                continue;
+            }
+            star.setScale(0);
+            this.tweens.add({
+                targets: star,
+                scale: 1.32,
+                duration: 280,
+                delay: 160 + i * 140,
+                ease: 'Back.easeOut',
+                onComplete: function (tw, targets) {
+                    if (!targets[0].scene) return;
+                    self.tweens.add({
+                        targets: targets[0],
+                        scale: 1,
+                        duration: 180,
+                        ease: 'Back.easeOut'
+                    });
+                }
+            });
+        }
+    }
+
+    _startWinSerpentine() {
+        this._stopWinSerpentine();
+        this._serpentineBits = [];
+        var self = this;
+        var spawn = function (burst) {
+            if (!self.sys || !self.sys.isActive() || !self.endOverlay) return;
+            var W = self.scale.width;
+            var H = self.scale.height;
+            var colors = [0xde3449, 0x1f7fd7, 0xf0c107, 0x47a798, 0xd28e43, 0xf3ead8, 0x8960a0];
+            var n = burst ? 10 : 3;
+            var i;
+            for (i = 0; i < n; i++) {
+                var bit = self.add.rectangle(
+                    Phaser.Math.Between(30, W - 30),
+                    burst ? Phaser.Math.Between(-40, 80) : -24,
+                    Phaser.Math.Between(8, 16),
+                    Phaser.Math.Between(22, 46),
+                    Phaser.Utils.Array.GetRandom(colors)
+                ).setDepth(208).setAngle(Phaser.Math.Between(-50, 50));
+                self._serpentineBits.push(bit);
+                self.tweens.add({
+                    targets: bit,
+                    y: H + 50,
+                    x: bit.x + Phaser.Math.Between(-90, 90),
+                    angle: bit.angle + Phaser.Math.Between(-240, 240),
+                    duration: Phaser.Math.Between(1700, 3200),
+                    ease: 'Sine.easeIn',
+                    onComplete: function (tw, targets) {
+                        var obj = targets[0];
+                        var list = self._serpentineBits;
+                        if (list) {
+                            var idx = list.indexOf(obj);
+                            if (idx >= 0) list.splice(idx, 1);
+                        }
+                        obj.destroy();
+                    }
+                });
+            }
+        };
+        if (GameSettings.reducedMotion()) {
+            spawn(true);
+            return;
+        }
+        spawn(true);
+        this._serpentineEvent = this.time.addEvent({
+            delay: 240,
+            loop: true,
+            callback: function () { spawn(false); }
+        });
+    }
+
+    _stopWinSerpentine() {
+        if (this._serpentineEvent) {
+            this._serpentineEvent.remove(false);
+            this._serpentineEvent = null;
+        }
+        if (this._serpentineBits) {
+            var i;
+            for (i = 0; i < this._serpentineBits.length; i++) {
+                if (this._serpentineBits[i] && this._serpentineBits[i].destroy) {
+                    this._serpentineBits[i].destroy();
+                }
+            }
+            this._serpentineBits = [];
+        }
+    }
+
     hideEndOverlay() {
+        this._stopWinSerpentine();
         if (this.endOverlay) {
             this.endOverlay.destroy(true);
             this.endOverlay = null;

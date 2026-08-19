@@ -6,9 +6,9 @@
  * пропорций и центрируется. Так одинаково хорошо и на телефоне, и в браузере
  * на десктопе (по бокам/сверху будут аккуратные тёмные поля).
  */
-import { GameScene } from './scenes/GameScene.js?v=1.7.13';
-import { UIScene } from './scenes/UIScene.js?v=1.7.13';
-import { SkinSelectScene } from './scenes/SkinSelectScene.js?v=1.7.9';
+import { GameScene } from './scenes/GameScene.js?v=1.7.20';
+import { UIScene } from './scenes/UIScene.js?v=1.7.17';
+import { SkinSelectScene } from './scenes/SkinSelectScene.js?v=1.7.18';
 
 var config = {
     type: Phaser.AUTO,
@@ -41,8 +41,6 @@ function unlockAudio() {
     if (window.AudioManager) AudioManager.resume();
 }
 window.addEventListener('pointerdown', unlockAudio);
-window.addEventListener('touchstart', unlockAudio, { passive: true });
-window.addEventListener('click', unlockAudio);
 function resumeAudio() {
     if (typeof document !== 'undefined' && document.hidden) return;
     if (window.AudioManager) AudioManager.resume();

@@ -397,6 +397,37 @@ def five_stripes() -> list[dict]:
     ]
 
 
+def gapped_stripes(
+    colors: list[str],
+    count: int,
+    gap: float = 14,
+    vertical: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    x0, y0, inner = 68.0, 158.0, 584.0
+    band = (inner - (count - 1) * gap) / count
+    polys: list[dict] = []
+    claimed: list[dict] = []
+    seen: dict[str, int] = {}
+    pos = x0 if vertical else y0
+    for i in range(count):
+        color = colors[i % len(colors)]
+        seen[color] = seen.get(color, 0) + 1
+        pid = f"poly_{color}_{seen[color]}"
+        if vertical:
+            polys.append(poly(pid, color, pos, y0, band, inner))
+            pos += band
+            if i < count - 1:
+                claimed.append(poly(f"gap_{i + 1}", "paper", pos, y0, gap, inner))
+                pos += gap
+        else:
+            polys.append(poly(pid, color, x0, pos, inner, band))
+            pos += band
+            if i < count - 1:
+                claimed.append(poly(f"gap_{i + 1}", "paper", x0, pos, inner, gap))
+                pos += gap
+    return polys, claimed
+
+
 def clamp_pt(x: float, y: float, x0: float = 68, y0: float = 158, x1: float = 652, y1: float = 742) -> dict:
     return {"x": round(min(x1, max(x0, x)), 1), "y": round(min(y1, max(y0, y)), 1)}
 
@@ -794,6 +825,7 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
     ]
     orbit_colors = orbit_field()
     orbit_path = [{"closed": True, "points": superellipse_path(360, 450, 132, 132, 1.32, 48)}]
+    meadow_polys, meadow_gaps = gapped_stripes(["green", "yellow"], 8, 16)
     spider = {
         "type": "fieldBoss",
         "x": 360,
@@ -991,11 +1023,13 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             id=12,
             pack="campaign",
             name="Поляна",
-            vials=[{"color": "green"}, {"color": "yellow"}],
-            polygons=[
-                poly("poly_green_1", "green", 68, 158, 584, 292),
-                poly("poly_yellow_1", "yellow", 68, 450, 584, 292),
+            vials=[
+                {"color": "green"}, {"color": "yellow"},
+                {"color": "green"}, {"color": "yellow"},
+                {"color": "green"}, {"color": "yellow"},
             ],
+            polygons=meadow_polys,
+            claimed=meadow_gaps,
         ),
         base(
             id=13,

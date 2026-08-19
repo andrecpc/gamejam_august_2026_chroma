@@ -1,5 +1,5 @@
 import { SkinManager } from '../managers/SkinManager.js?v=1.7.6';
-import { makeUnicornDot } from '../entities/Player.js?v=1.7.10';
+import { makeUnicornDot } from '../entities/Player.js?v=1.7.18';
 
 export class SkinSelectScene extends Phaser.Scene {
     constructor() {

@@ -57,6 +57,8 @@ export class Vial {
         this.targetFill = 0;
         this.pulse = 0;
         this.visualScale = 1;
+        this.squashX = 1;
+        this.squashY = 1;
         this.remainingCount = 1;
         this.busy = false;
         this.w = 108;
@@ -113,15 +115,18 @@ export class Vial {
         this.pulse = Math.max(0, this.pulse - dt * 2.8);
         var punch = 1 + Math.sin((1 - this.pulse) * Math.PI) * this.pulse * 0.09;
         this.visualScale = punch;
-        this.label.setScale(punch);
+        this.label.setScale(punch * this.squashX, punch * this.squashY);
         var key = (this.fill * 1000 | 0) + ':' + (this.visualScale * 200 | 0) + ':' +
-            ((this.gfx.alpha * 100) | 0) + ':' + this.colorName;
+            ((this.gfx.alpha * 100) | 0) + ':' + this.colorName + ':' +
+            ((this.squashX * 100) | 0) + ':' + ((this.squashY * 100) | 0);
         if (key === this._drawKey) return;
         this._drawKey = key;
         this._draw();
     }
 
     appear() {
+        this.squashX = 1;
+        this.squashY = 1;
         if (GameSettings.reducedMotion()) {
             this.visualScale = 1;
             this.gfx.setAlpha(1);
@@ -152,8 +157,8 @@ export class Vial {
         var g = this.gfx;
         g.clear();
         var s = this.visualScale;
-        var w = this.w * s;
-        var h = this.h * s;
+        var w = this.w * s * this.squashX;
+        var h = this.h * s * this.squashY;
         var x = this.x;
         var y = this.y;
         var seed = (Math.round(this.x) * 13 + Math.round(this.y) * 7) >>> 0;
@@ -222,6 +227,25 @@ export class Vial {
         }
     }
 
+    juicyCatch() {
+        this.pulse = 1;
+        if (GameSettings.reducedMotion()) {
+            this.squashX = 1;
+            this.squashY = 1;
+            return;
+        }
+        this.scene.tweens.killTweensOf(this);
+        this.squashX = 1.22;
+        this.squashY = 0.78;
+        this.scene.tweens.add({
+            targets: this,
+            squashX: 1,
+            squashY: 1,
+            duration: 420,
+            ease: 'Elastic.easeOut'
+        });
+    }
+
     explode(onDone) {
         var self = this;
         var duration = GameSettings.reducedMotion() ? 200 : 860;
@@ -240,6 +264,8 @@ export class Vial {
             ease: 'Sine.easeIn',
             onComplete: function () {
                 self.visualScale = 1;
+                self.squashX = 1;
+                self.squashY = 1;
                 self.gfx.setScale(1).setAlpha(0);
                 self.icon.setScale(1).setAlpha(0);
                 self.label.setScale(1).setAlpha(0);

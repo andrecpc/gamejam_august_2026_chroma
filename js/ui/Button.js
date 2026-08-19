@@ -127,11 +127,19 @@
             this.bg.fillRoundedRect(-this._w / 2, -this._h / 2, this._w, this._h, 10);
         },
 
-        _setVisualScale: function (s) {
-            this.bg.setScale(s);
+        _setVisualScale: function (sx, sy) {
+            if (sy == null) sy = sx;
+            this.bg.setScale(sx, sy);
             var i;
-            for (i = 0; i < this.labelLayers.length; i++) this.labelLayers[i].setScale(s);
-            if (this.fiber) this.fiber.setScale(s);
+            for (i = 0; i < this.labelLayers.length; i++) this.labelLayers[i].setScale(sx, sy);
+            if (this.fiber) this.fiber.setScale(sx, sy);
+        },
+
+        _setVisualAngle: function (deg) {
+            this.bg.setAngle(deg);
+            var i;
+            for (i = 0; i < this.labelLayers.length; i++) this.labelLayers[i].setAngle(deg);
+            if (this.fiber) this.fiber.setAngle(deg);
         },
 
         _visualTargets: function () {
@@ -140,15 +148,18 @@
                 .concat(this.fiber ? [this.fiber] : []);
         },
 
-        _animateVisualScale: function (scene, s, duration, ease) {
+        _animateVisual: function (scene, props, duration, ease) {
             scene.tweens.killTweensOf(this._visualTargets());
-            scene.tweens.add({
+            var tween = {
                 targets: this._visualTargets(),
-                scaleX: s,
-                scaleY: s,
                 duration: duration || 140,
                 ease: ease || 'Quad.easeOut'
-            });
+            };
+            var key;
+            for (key in props) {
+                if (Object.prototype.hasOwnProperty.call(props, key)) tween[key] = props[key];
+            }
+            scene.tweens.add(tween);
         },
 
         _bindEvents: function (scene) {
@@ -157,20 +168,26 @@
             this.hit.on('pointerover', function () {
                 if (!self._enabled) return;
                 self._drawBg(self._lighten(self._baseColor, 0.1));
-                self._animateVisualScale(scene, 1.02, 120);
+                if (window.GameSettings && GameSettings.reducedMotion()) {
+                    self._animateVisual(scene, { scaleX: 1.03, scaleY: 1.03, angle: 0 }, 80);
+                    if (window.AudioManager) AudioManager.playHover();
+                    return;
+                }
+                self._animateVisual(scene, { scaleX: 1.07, scaleY: 1.07, angle: -2.8 }, 200, 'Back.easeOut');
                 if (window.AudioManager) AudioManager.playHover();
             });
 
             this.hit.on('pointerout', function () {
                 self._drawBg(self._baseColor);
-                self._animateVisualScale(scene, 1, 130);
+                self._animateVisual(scene, { scaleX: 1, scaleY: 1, angle: 0 }, 160);
             });
 
             this.hit.on('pointerdown', function () {
                 if (!self._enabled) return;
                 self._gotDown = true;
                 scene.tweens.killTweensOf(self._visualTargets());
-                self._setVisualScale(0.96);
+                self._setVisualScale(1.1, 0.88);
+                self._setVisualAngle(0);
                 self._drawBg(self._darken(self._baseColor, 0.12));
             });
 
@@ -182,7 +199,10 @@
                     return;
                 }
                 self._drawBg(self._baseColor);
-                self._animateVisualScale(scene, 1, 220, 'Back.easeOut');
+                var ease = (window.GameSettings && GameSettings.reducedMotion())
+                    ? 'Quad.easeOut'
+                    : 'Elastic.easeOut';
+                self._animateVisual(scene, { scaleX: 1, scaleY: 1, angle: 0 }, 420, ease);
                 if (!pressedHere) return;
                 if (window.AudioManager) AudioManager.playClick();
                 if (self._onClick) self._onClick();
@@ -190,6 +210,8 @@
 
             this.hit.on('pointerupoutside', function () {
                 self._gotDown = false;
+                self._drawBg(self._baseColor);
+                self._animateVisual(scene, { scaleX: 1, scaleY: 1, angle: 0 }, 160);
             });
         },
 

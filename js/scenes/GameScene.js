@@ -1,5 +1,5 @@
-import { Player } from '../entities/Player.js?v=1.7.10';
-import { FieldManager } from '../managers/FieldManager.js?v=1.7.12';
+import { Player } from '../entities/Player.js?v=1.7.18';
+import { FieldManager } from '../managers/FieldManager.js?v=1.7.18';
 import { VialManager } from '../managers/VialManager.js?v=1.5.5';
 import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
 import { MagneticManager } from '../managers/MagneticManager.js';
@@ -44,6 +44,7 @@ export class GameScene extends Phaser.Scene {
         this.loseKind = null;
         this._hasMoved = false;
         this._finaleConfettiEvent = null;
+        this._crumbAt = null;
         this._stickNeedsRelease = false;
         this._onVisChange = null;
         this._introHold = false;
@@ -84,7 +85,7 @@ export class GameScene extends Phaser.Scene {
             );
         }
 
-        this.confetti = this.add.group({ maxSize: 180, runChildUpdate: true });
+        this.confetti = this.add.group({ maxSize: 280, runChildUpdate: true });
         this._bindInput();
         this._spawnTime = this.time.now;
         this._resetStick();
@@ -103,6 +104,7 @@ export class GameScene extends Phaser.Scene {
         this.floatLayer = this.add.container(0, 0);
         this.floatLayer.setDepth(25);
         this.game.events.on('game:baskets-idle', this._onBasketsIdle, this);
+        this.game.events.on('game:boss-defeated', this._onBossDefeated, this);
         if (this.level.constraints && this.level.constraints.time) {
             this._introHold = true;
             this.playStartedAt = 0;
@@ -144,6 +146,7 @@ export class GameScene extends Phaser.Scene {
 
     _onShutdown() {
         this.game.events.off('game:baskets-idle', this._onBasketsIdle, this);
+        this.game.events.off('game:boss-defeated', this._onBossDefeated, this);
         if (this.scene.isActive('UI') || this.scene.isSleeping('UI')) {
             this.scene.stop('UI');
         }
@@ -323,7 +326,12 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         if (ev && ev.magnetAttached) this._fireTutorials('magnet');
-        if (this.player.drawing) this._fireTutorials('drawing');
+        if (this.player.drawing) {
+            this._fireTutorials('drawing');
+            this._tickCutCrumbs();
+        } else {
+            this._crumbAt = null;
+        }
         this._updateTutorialDismiss();
         if (ev && ev.close) {
             try {
@@ -577,7 +585,7 @@ export class GameScene extends Phaser.Scene {
             (applied.killed || []).forEach(kill);
             if (window.AudioManager && AudioManager.playCut) AudioManager.playCut();
             GameSettings.vibrate(12);
-            this._cutImpact();
+            this._cutJuice(trail, cut.pieces);
             this._fireTutorials('cut');
             this.game.events.emit('game:tutorial-dismiss', { reason: 'cut' });
             if (this.objectives) {
@@ -645,37 +653,184 @@ export class GameScene extends Phaser.Scene {
             arrive();
             return;
         }
+        var launch = function () {
+            self._launchCrumple(from, r, color, target, arrive);
+        };
+        if (piece && piece.polys && piece.polys[0] && !piece._juicePeeled) {
+            piece._juicePeeled = true;
+            this._peelThenCrumple(piece, color, from, launch);
+            return;
+        }
+        if (window.AudioManager && AudioManager.playRustle) AudioManager.playRustle();
+        launch();
+    }
+
+    _peelThenCrumple(piece, color, from, done) {
+        var poly = piece.polys[0];
+        var c = polyCentroid(poly) || from;
+        var wrap = this.add.container(c.x, c.y).setDepth(17);
+        var g = this.add.graphics();
+        wrap.add(g);
+        var shifted = [];
+        var i;
+        for (i = 0; i < poly.length; i++) {
+            shifted.push({ x: poly[i].x - c.x, y: poly[i].y - c.y });
+        }
+        if (window.Paper && Paper.drawColorPiece) {
+            Paper.drawColorPiece(g, shifted, color, Math.round(c.x * 13 + c.y) >>> 0, {
+                lift: true,
+                matchField: true
+            });
+        } else {
+            g.fillStyle(color, 1);
+            g.beginPath();
+            g.moveTo(shifted[0].x, shifted[0].y);
+            for (i = 1; i < shifted.length; i++) g.lineTo(shifted[i].x, shifted[i].y);
+            g.closePath();
+            g.fillPath();
+        }
+        this._spawnPaperCrumbs(c.x, c.y, color, 10);
+        if (window.AudioManager && AudioManager.playRustle) AudioManager.playRustle();
+        var self = this;
+        this.tweens.add({
+            targets: wrap,
+            y: c.y - 12,
+            scale: 1.04,
+            duration: 160,
+            ease: 'Back.easeOut',
+            onComplete: function () {
+                self.tweens.add({
+                    targets: wrap,
+                    scale: 0.18,
+                    angle: Phaser.Math.Between(-48, 48),
+                    duration: 170,
+                    ease: 'Quad.easeIn',
+                    onComplete: function () {
+                        wrap.destroy(true);
+                        done();
+                    }
+                });
+            }
+        });
+    }
+
+    _launchCrumple(from, r, color, target, arrive) {
+        var self = this;
         var drop = this.add.graphics().setDepth(18);
         drop.x = from.x;
-        drop.y = from.y;
+        drop.y = from.y - 8;
         if (window.Paper && Paper.drawCrumple) {
             Paper.drawCrumple(drop, 0, 0, r, color, Math.round(from.x * 13 + from.y * 7) >>> 0);
         } else {
             drop.fillStyle(color, 0.9);
             drop.fillCircle(0, 0, r);
         }
-        var fly = function () {
-            self.tweens.add({
-                targets: drop,
-                x: target.x + Phaser.Math.Between(-10, 10),
-                y: target.y,
-                scale: 0.45,
-                duration: 420,
-                ease: 'Cubic.easeIn',
-                onComplete: function () {
-                    drop.destroy();
-                    arrive();
-                }
-            });
-        };
         this.tweens.add({
             targets: drop,
-            scaleX: 1.28,
-            scaleY: 0.62,
-            duration: 90,
+            scaleX: 1.32,
+            scaleY: 0.58,
+            duration: 110,
             yoyo: true,
             ease: 'Quad.easeIn',
-            onComplete: fly
+            onComplete: function () {
+                self.tweens.add({
+                    targets: drop,
+                    x: target.x + Phaser.Math.Between(-10, 10),
+                    y: target.y,
+                    scale: 0.45,
+                    duration: 420,
+                    ease: 'Cubic.easeIn',
+                    onComplete: function () {
+                        drop.destroy();
+                        arrive();
+                    }
+                });
+            }
+        });
+    }
+
+    _cutJuice(trail, pieces) {
+        if (!GameSettings.reducedMotion()) {
+            this.cameras.main.shake(100, 0.005);
+        }
+        this._flashCutEdge(trail);
+        this._cutImpact();
+        if (GameSettings.reducedMotion() || !trail || trail.length < 2) return;
+        var step = Math.max(1, Math.floor(trail.length / 16));
+        var i;
+        for (i = 0; i < trail.length; i += step) {
+            this._spawnPaperCrumb(trail[i].x, trail[i].y, 0xf7f1e6, true);
+            if (i % (step * 2) === 0) {
+                this._spawnPaperCrumb(trail[i].x, trail[i].y, 0xf7f1e6, true);
+            }
+        }
+        if (pieces && pieces[0] && pieces[0].polys && pieces[0].polys[0]) {
+            var c = polyCentroid(pieces[0].polys[0]);
+            var tint = pieces[0].color && this.level.palette
+                ? hexToInt(this.level.palette[pieces[0].color] || 0xf7f1e6)
+                : 0xf7f1e6;
+            if (c) this._spawnPaperCrumbs(c.x, c.y, tint, 8);
+        }
+    }
+
+    _flashCutEdge(trail) {
+        if (!trail || trail.length < 2 || !window.Paper || !Paper.drawCutDeckle) return;
+        var g = this.add.graphics().setDepth(6.4);
+        Paper.drawCutDeckle(g, trail, Math.round((trail[0].x || 0) * 9 + (trail[0].y || 0)) >>> 0);
+        this.tweens.add({
+            targets: g,
+            alpha: 0,
+            duration: GameSettings.reducedMotion() ? 120 : 420,
+            delay: GameSettings.reducedMotion() ? 0 : 140,
+            onComplete: function () { g.destroy(); }
+        });
+    }
+
+    _tickCutCrumbs() {
+        if (GameSettings.reducedMotion() || !this.player) return;
+        var trail = this.player.trail;
+        if (!trail || trail.length < 2) return;
+        var last = trail[trail.length - 1];
+        if (this._crumbAt && dist(this._crumbAt.x, this._crumbAt.y, last.x, last.y) < 8) return;
+        this._crumbAt = { x: last.x, y: last.y };
+        this._spawnPaperCrumb(last.x, last.y, 0xf7f1e6, true);
+        this._spawnPaperCrumb(
+            last.x + Phaser.Math.Between(-6, 6),
+            last.y + Phaser.Math.Between(-6, 6),
+            0xffffff,
+            true
+        );
+        var name = this.field && this.field.colorAt && this.field.colorAt(last.x, last.y);
+        var tint = 0xf7f1e6;
+        if (name && this.level && this.level.palette && this.level.palette[name]) {
+            tint = hexToInt(this.level.palette[name]);
+        }
+        this._spawnPaperCrumb(last.x, last.y, tint, true);
+    }
+
+    _spawnPaperCrumbs(x, y, color, count) {
+        var n = count || 6;
+        var i;
+        for (i = 0; i < n; i++) this._spawnPaperCrumb(x, y, color, false);
+    }
+
+    _spawnPaperCrumb(x, y, color, tiny) {
+        if (!this.sys || !this.sys.isActive()) return;
+        var w = tiny ? Phaser.Math.Between(3, 6) : Phaser.Math.Between(5, 10);
+        var h = tiny ? Phaser.Math.Between(4, 8) : Phaser.Math.Between(8, 14);
+        var bit = this.add.rectangle(x, y, w, h, color, 0.95).setDepth(19);
+        bit.setAngle(Phaser.Math.Between(0, 360));
+        if (this.confetti) this.confetti.add(bit);
+        this.tweens.add({
+            targets: bit,
+            x: x + Phaser.Math.Between(-28, 28),
+            y: y + Phaser.Math.Between(12, 46),
+            angle: bit.angle + Phaser.Math.Between(-120, 120),
+            alpha: 0,
+            scale: 0.3,
+            duration: Phaser.Math.Between(280, 480),
+            ease: 'Quad.easeOut',
+            onComplete: function (tw, targets) { targets[0].destroy(); }
         });
     }
 
@@ -1075,6 +1230,12 @@ export class GameScene extends Phaser.Scene {
         });
     }
 
+    _onBossDefeated() {
+        if (window.AudioManager && AudioManager.startMusic) {
+            AudioManager.startMusic('destroy');
+        }
+    }
+
     _tryBossWin() {
         if (!this.bossManager || !this.bossManager.defeated || this.gameOver) {
             return false;
@@ -1121,6 +1282,7 @@ export class GameScene extends Phaser.Scene {
             if (window.AudioManager && AudioManager.playFinale) AudioManager.playFinale();
             else if (window.AudioManager) AudioManager.playWin();
         } else if (window.AudioManager) {
+            if (AudioManager.startMusic) AudioManager.startMusic('normal');
             if (AudioManager.playWin) AudioManager.playWin();
             else AudioManager.playSuccess();
         }
