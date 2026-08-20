@@ -94,7 +94,7 @@
                 this.scene.start('Settings');
             }.bind(this), { width: 420, height: 92, fontSize: 38, color: 0x475467 }).setDepth(21);
 
-            this.add.text(W / 2, H - 36, 'v1.7.20 paper cut • Phaser 3', {
+            this.add.text(W / 2, H - 36, 'v1.7.21 paper cut • Phaser 3', {
                 fontFamily: 'Arial, sans-serif',
                 fontSize: '24px',
                 color: '#9aa3c4'
