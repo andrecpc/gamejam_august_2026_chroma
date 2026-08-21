@@ -35,7 +35,16 @@
         [38, 41, 45]  // E низко
     ];
 
+    // Таймерный слой: тот же paper-cut характер, чуть быстрее и светлее.
+    var TIMED_PROGRESSION = [
+        [60, 64, 67], // C
+        [64, 67, 71], // E
+        [57, 60, 64], // Am
+        [55, 59, 62]  // G
+    ];
+
     var TEMPO = 82;                       // ударов в минуту
+    var TIMED_TEMPO = 100;
     var BOSS_TEMPO = 112;
     var DESTROY_TEMPO = 156;
     var SPB = 60 / TEMPO;                 // секунд на удар
@@ -194,7 +203,8 @@
 
         _stepDuration: function () {
             var tempo = TEMPO;
-            if (this._musicMode === 'boss') tempo = BOSS_TEMPO;
+            if (this._musicMode === 'timed') tempo = TIMED_TEMPO;
+            else if (this._musicMode === 'boss') tempo = BOSS_TEMPO;
             else if (this._musicMode === 'destroy') tempo = DESTROY_TEMPO;
             return (60 / tempo) / 2;
         },
@@ -203,7 +213,9 @@
             if (!this.ctx) return;
             var stepDur = this._stepDuration();
             var loop = TOTAL_STEPS;
-            if (this._musicMode === 'boss') {
+            if (this._musicMode === 'timed') {
+                loop = STEPS_PER_BAR * TIMED_PROGRESSION.length;
+            } else if (this._musicMode === 'boss') {
                 loop = STEPS_PER_BAR * BOSS_PROGRESSION.length;
             } else if (this._musicMode === 'destroy') {
                 loop = 16;
@@ -224,15 +236,17 @@
                 return;
             }
             var boss = this._musicMode === 'boss';
-            var progression = boss ? BOSS_PROGRESSION : PROGRESSION;
+            var timed = this._musicMode === 'timed';
+            var progression = boss ? BOSS_PROGRESSION : (timed ? TIMED_PROGRESSION : PROGRESSION);
             var bar = Math.floor(step / STEPS_PER_BAR) % progression.length;
             var chord = progression[bar];
-            var spb = boss ? (60 / BOSS_TEMPO) : SPB;
+            var spb = boss ? (60 / BOSS_TEMPO) : (timed ? (60 / TIMED_TEMPO) : SPB);
+            var mood = boss ? 'boss' : (timed ? 'timed' : 'normal');
 
             // В начале такта — мягкий пэд (все ноты аккорда, долго)
             if (step % STEPS_PER_BAR === 0) {
                 for (var i = 0; i < chord.length; i++) {
-                    this._pad(midiToFreq(chord[i]), time, spb * 4, boss);
+                    this._pad(midiToFreq(chord[i]), time, spb * 4, mood);
                 }
             }
 
@@ -240,12 +254,17 @@
             var noteIndex = step % chord.length;
             var freq = midiToFreq(chord[noteIndex] + (boss ? 0 : 12));
             if (boss) {
-                if (step % 2 === 0) this._pluck(freq, time, true);
+                if (step % 2 === 0) this._pluck(freq, time, 'boss');
                 if (step % STEPS_PER_BAR === 0) {
-                    this._pluck(midiToFreq(chord[0] - 12), time, true);
+                    this._pluck(midiToFreq(chord[0] - 12), time, 'boss');
+                }
+            } else if (timed) {
+                this._pluck(freq, time, 'timed');
+                if (step % 4 === 0) {
+                    this._clockTick(time);
                 }
             } else if (step % 4 !== 3) {
-                this._pluck(freq, time, false);
+                this._pluck(freq, time, 'normal');
             }
         },
 
@@ -262,7 +281,7 @@
                 this._musicBoom(time, 0.16, 720 + (step % 3) * 160, 0.11);
             }
             if (beat === 2 || beat === 5) {
-                this._pluck(midiToFreq(84 + (step % 4)), time, true);
+                this._pluck(midiToFreq(84 + (step % 4)), time, 'boss');
             }
         },
 
@@ -306,15 +325,17 @@
         },
 
         // Долгий пэд с плавной атакой и затуханием
-        _pad: function (freq, time, dur, tense) {
+        _pad: function (freq, time, dur, mood) {
             var osc = this.ctx.createOscillator();
             var g = this.ctx.createGain();
+            var tense = mood === 'boss' || mood === true;
+            var timed = mood === 'timed';
             osc.type = tense ? 'sawtooth' : 'sine';
             osc.frequency.value = freq;
 
-            var peak = tense ? 0.09 : 0.22;
+            var peak = tense ? 0.09 : (timed ? 0.16 : 0.22);
             g.gain.setValueAtTime(0.0001, time);
-            g.gain.linearRampToValueAtTime(peak, time + (tense ? 0.22 : 0.6));
+            g.gain.linearRampToValueAtTime(peak, time + (tense ? 0.22 : (timed ? 0.32 : 0.6)));
             g.gain.linearRampToValueAtTime(0.0001, time + dur);
 
             osc.connect(g);
@@ -324,21 +345,38 @@
         },
 
         // Короткий «пляк» арпеджио
-        _pluck: function (freq, time, tense) {
+        _pluck: function (freq, time, mood) {
             var osc = this.ctx.createOscillator();
             var g = this.ctx.createGain();
+            var tense = mood === 'boss' || mood === true;
+            var timed = mood === 'timed';
             osc.type = tense ? 'square' : 'triangle';
             osc.frequency.value = freq;
 
-            var peak = tense ? 0.07 : 0.18;
+            var peak = tense ? 0.07 : (timed ? 0.14 : 0.18);
             g.gain.setValueAtTime(0.0001, time);
             g.gain.linearRampToValueAtTime(peak, time + 0.01);
-            g.gain.exponentialRampToValueAtTime(0.0001, time + (tense ? 0.22 : 0.35));
+            g.gain.exponentialRampToValueAtTime(0.0001, time + (tense ? 0.22 : (timed ? 0.24 : 0.35)));
 
             osc.connect(g);
             g.connect(this.musicGain);
             osc.start(time);
             osc.stop(time + 0.4);
+        },
+
+        _clockTick: function (time) {
+            if (!this.ctx || !this.musicGain) return;
+            var osc = this.ctx.createOscillator();
+            var g = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 1320;
+            g.gain.setValueAtTime(0.0001, time);
+            g.gain.linearRampToValueAtTime(0.028, time + 0.006);
+            g.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
+            osc.connect(g);
+            g.connect(this.musicGain);
+            osc.start(time);
+            osc.stop(time + 0.09);
         },
 
         // ---- Звуки интерфейса ----
@@ -549,15 +587,17 @@
             this._finaleEl = null;
         },
         playBack: function () { this._blip(midiToFreq(64), 'sine', 0.12, 0.07); },
-        playCut: function () {
+        playCut: function (opts) {
             this._ensureContext();
             if (!this.ctx) return;
+            var combo = !!(opts && opts.combo);
             var t = this.ctx.currentTime;
-            var pitch = 0.92 + Math.random() * 0.16;
-            this._noiseBurst(t, 0.038, 4800 * pitch, 1.7, 0.24, pitch);
+            var pitch = (0.92 + Math.random() * 0.16) * (combo ? 1.2 : 1);
+            this._noiseBurst(t, 0.038, 4800 * pitch, 1.7, combo ? 0.28 : 0.24, pitch);
             this._noiseBurst(t + 0.014, 0.05, 2800 * pitch, 1.35, 0.18, pitch);
-            this._blip(2100 * pitch, 'triangle', 0.045, 0.07);
+            this._blip(2100 * pitch, 'triangle', 0.045, combo ? 0.09 : 0.07);
             this._sweep(2600 * pitch, 980 * pitch, 'sine', 0.07, 0.045);
+            if (combo) this._blip(1560, 'sine', 0.09, 0.09);
         },
         playPour: function () {
             this.playBasketLand();
@@ -591,6 +631,105 @@
         playZap: function () {
             this._sweep(1100, 210, 'square', 0.11, 0.14);
             this._blip(240, 'sawtooth', 0.12, 0.16);
+        },
+        playCatch: function () {
+            this._ensureContext();
+            if (!this.ctx) return;
+            var t = this.ctx.currentTime;
+            this._noiseBurst(t, 0.045, 3400, 0.7, 0.34, 1.15);
+            this._noiseBurst(t + 0.018, 0.04, 2200, 0.85, 0.18, 1.05);
+            this._sweep(2100, 980, 'sine', 0.07, 0.2);
+            this._blip(1560, 'sine', 0.05, 0.14);
+        },
+        playDunk: function () {
+            this.playSwish();
+        },
+        playSwish: function () {
+            this._ensureContext();
+            if (!this.ctx) return;
+            var t = this.ctx.currentTime;
+            this._noiseBurst(t, 0.08, 720, 0.85, 0.16, 0.85);
+            var i;
+            for (i = 0; i < 11; i++) {
+                this._noiseBurst(
+                    t + 0.04 + i * 0.058 + Math.random() * 0.03,
+                    0.055,
+                    620 + Math.random() * 420,
+                    0.8,
+                    0.045 + Math.random() * 0.03,
+                    0.75 + Math.random() * 0.15
+                );
+            }
+        },
+        playStamp: function () {
+            this._ensureContext();
+            if (!this.ctx) return;
+            var t = this.ctx.currentTime;
+            this._noiseBurst(t, 0.09, 180, 0.7, 0.28, 0.7);
+            this._blip(90, 'sine', 0.16, 0.22);
+            this._noiseBurst(t + 0.04, 0.07, 1400, 1.1, 0.12, 1);
+        },
+
+        setCritters: function (count) {
+            this._ensureContext();
+            if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+            var n = Math.max(0, count || 0);
+            this._critterCount = n;
+            if (n <= 0) {
+                if (this._critterId) {
+                    clearInterval(this._critterId);
+                    this._critterId = null;
+                }
+                return;
+            }
+            if (this._critterId) return;
+            var self = this;
+            this._critterStep = 0;
+            this._critterId = setInterval(function () {
+                self._critterTick();
+            }, 240);
+            this._critterTick();
+        },
+        stopCritters: function () {
+            this.setCritters(0);
+        },
+        _critterTick: function () {
+            if (!this.ctx || !this.sfxGain || !this._critterCount) return;
+            if (!GameSettings.get('sfxOn')) return;
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            var voices = [
+                [67, 69, 72, 74, 76],
+                [60, 64, 67, 71, 72],
+                [72, 76, 79, 74, 67]
+            ];
+            var step = this._critterStep || 0;
+            this._critterStep = step + 1;
+            var voice = voices[step % voices.length];
+            var midi = voice[step % voice.length];
+            var t = this.ctx.currentTime;
+            var osc = this.ctx.createOscillator();
+            var g = this.ctx.createGain();
+            osc.type = step % 2 === 0 ? 'triangle' : 'sine';
+            osc.frequency.value = midiToFreq(midi);
+            var vol = 0.12 + (step % 3) * 0.02;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(vol, t + 0.04);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+            osc.connect(g);
+            g.connect(this.sfxGain);
+            osc.start(t);
+            osc.stop(t + 0.42);
+            var osc2 = this.ctx.createOscillator();
+            var g2 = this.ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.value = midiToFreq(midi + 7);
+            g2.gain.setValueAtTime(0.0001, t + 0.02);
+            g2.gain.linearRampToValueAtTime(vol * 0.55, t + 0.07);
+            g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+            osc2.connect(g2);
+            g2.connect(this.sfxGain);
+            osc2.start(t + 0.02);
+            osc2.stop(t + 0.36);
         },
 
         // ---- Реакция на изменение настроек ----

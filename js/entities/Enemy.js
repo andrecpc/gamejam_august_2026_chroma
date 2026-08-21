@@ -1,3 +1,50 @@
+function fillPts(g, pts) {
+    if (!pts || pts.length < 2) return;
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y);
+    var i;
+    for (i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    g.closePath();
+    g.fillPath();
+}
+
+function strokePts(g, pts) {
+    if (!pts || pts.length < 2) return;
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y);
+    var i;
+    for (i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    g.closePath();
+    g.strokePath();
+}
+
+function circlePts(r, n) {
+    var pts = [];
+    var i;
+    for (i = 0; i < n; i++) {
+        var a = (i / n) * Math.PI * 2;
+        pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+    return pts;
+}
+
+function expandPts(pts, pad) {
+    var out = [];
+    var i;
+    for (i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        var len = Math.sqrt(p.x * p.x + p.y * p.y) || 1;
+        out.push({
+            x: p.x / len * (len + pad),
+            y: p.y / len * (len + pad)
+        });
+    }
+    return out;
+}
+
+// Старый кружок+глаз+бейдж не удалён: поставь false, чтобы вернуть прежний вид.
+var PAPER_LOOK = true;
+
 export class Enemy {
     constructor(scene) {
         this.scene = scene;
@@ -29,6 +76,14 @@ export class Enemy {
             fontStyle: 'bold',
             color: '#ffffff'
         }).setOrigin(0.5).setDepth(7).setVisible(false);
+        this.paper = scene.add.graphics();
+        this.paper.setDepth(6);
+        this.paper.setVisible(false);
+        this.tint = 0xff3b5c;
+        this._paperPhase = Math.random() * Math.PI * 2;
+        this._paperBody = null;
+        this._paperDeckle = null;
+        this._paperKey = '';
     }
 
     spawn(cfg) {
@@ -51,12 +106,12 @@ export class Enemy {
         this.drainStarted = false;
         this.drainPath = [];
         var colors = {
-            pingpong: 0xff3b5c,
-            rover: 0xff9d3b,
-            chase: 0xc85cff,
-            turret: 0x4a5cff,
-            thief: 0xff6bd6,
-            laser: 0xff365f
+            pingpong: 0xde3449,
+            rover: 0xe0a33a,
+            chase: 0x7c4dff,
+            turret: 0x2b74e8,
+            thief: 0x2bbf8a,
+            laser: 0xf06bd0
         };
         var badges = {
             rover: 'R',
@@ -67,15 +122,31 @@ export class Enemy {
         };
         this.dot.setFillStyle(colors[this.type] || 0xff3b5c);
         this.dot.setRadius(this.r);
-        this.dot.setVisible(true);
-        this.eye.setVisible(true);
-        this.badge.setText(badges[this.type] || '');
-        this.badge.setVisible(!!badges[this.type]);
+        this.tint = colors[this.type] || 0xff3b5c;
+        this._paperBody = null;
+        this._paperDeckle = null;
+        this._paperKey = '';
+        this._buildPaperShape();
+        if (PAPER_LOOK) {
+            this.dot.setVisible(false);
+            this.eye.setVisible(false);
+            this.badge.setVisible(false);
+            this.paper.setVisible(true);
+            this.paper.setAlpha(1);
+            this.paper.setScale(1);
+        } else {
+            this.paper.setVisible(false);
+            this.dot.setVisible(true);
+            this.eye.setVisible(true);
+            this.badge.setText(badges[this.type] || '');
+            this.badge.setVisible(!!badges[this.type]);
+        }
         if (this.type === 'thief') {
             this.dot.setStrokeStyle(4, 0xffffff, 1);
             this.dot.setDepth(10);
             this.eye.setDepth(11);
             this.badge.setDepth(11);
+            this.paper.setDepth(10);
         }
         this._sync();
     }
@@ -270,20 +341,72 @@ export class Enemy {
         this.dot.setVisible(false);
         this.eye.setVisible(false);
         this.badge.setVisible(false);
+        if (this.paper) this.paper.setVisible(false);
+    }
+
+    _buildPaperShape() {
+        var visR = Math.max(10, this.r - 1);
+        this._paperR = visR;
+        var base = circlePts(visR, 14);
+        var seed = (Math.round((this.x || 1) * 13 + (this.y || 1) * 7 + (this.r || 13) * 5) >>> 0);
+        if (window.Paper && Paper.tearPoly) {
+            this._paperBody = Paper.tearPoly(base, seed, 3);
+            this._paperDeckle = Paper.tearPoly(expandPts(base, 3), seed + 3, 4);
+        } else {
+            this._paperBody = base;
+            this._paperDeckle = expandPts(base, 3);
+        }
+    }
+
+    _drawPaper() {
+        if (!this.paper) return;
+        if (!this._paperBody) this._buildPaperShape();
+        var t = (this.scene.time && this.scene.time.now) ? this.scene.time.now / 1000 : 0;
+        var glow = 0.5 + Math.sin(t * 1.15 + this._paperPhase) * 0.5;
+        var key = this.type + ':' + ((glow * 20) | 0);
+        if (key === this._paperKey) return;
+        this._paperKey = key;
+        var g = this.paper;
+        g.clear();
+        var color = this.tint || 0xde3449;
+        g.fillStyle(0x061428, 0.28);
+        fillPts(g, this._paperDeckle.map(function (p) {
+            return { x: p.x + 3, y: p.y + 5 };
+        }));
+        g.fillStyle(0xf7f1e6, 1);
+        fillPts(g, this._paperDeckle);
+        g.fillStyle(color, 1);
+        fillPts(g, this._paperBody);
+        g.lineStyle(1.8 + glow * 1.8, 0xffffff, 0.28 + glow * 0.48);
+        strokePts(g, this._paperDeckle);
+        var visR = this._paperR || 11;
+        var ex = visR * 0.22;
+        var ey = -visR * 0.18;
+        var er = Math.max(2.1, visR * 0.2);
+        g.fillStyle(0xf7f1e6, 1);
+        g.fillCircle(ex, ey, er + 1.1);
+        g.fillStyle(0x1a1420, 1);
+        g.fillCircle(ex + 0.4, ey - 0.2, er);
     }
 
     _sync() {
         this.dot.setPosition(this.x, this.y);
         this.eye.setPosition(this.x + 3, this.y - 2);
         this.badge.setPosition(this.x, this.y);
+        if (this.paper) {
+            this.paper.setPosition(this.x, this.y);
+            if (PAPER_LOOK && this.active) this._drawPaper();
+        }
     }
 
     destroy() {
         if (this.dot && this.dot.scene) this.dot.destroy();
         if (this.eye && this.eye.scene) this.eye.destroy();
         if (this.badge && this.badge.scene) this.badge.destroy();
+        if (this.paper && this.paper.scene) this.paper.destroy();
         this.dot = null;
         this.eye = null;
         this.badge = null;
+        this.paper = null;
     }
 }

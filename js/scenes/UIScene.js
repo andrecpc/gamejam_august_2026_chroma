@@ -1,4 +1,4 @@
-import { Vial } from '../entities/Vial.js?v=1.7.17';
+import { Vial } from '../entities/Vial.js?v=1.7.23';
 import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
 
 export class UIScene extends Phaser.Scene {
@@ -97,7 +97,9 @@ export class UIScene extends Phaser.Scene {
         var slotY = H - 210;
         var xs = [W / 2 - 140, W / 2, W / 2 + 140];
         for (var i = 0; i < 3; i++) {
-            this.vialSlots.push(new Vial(this, xs[i], slotY, 'red', this.palette));
+            var slot = new Vial(this, xs[i], slotY, 'red', this.palette);
+            if (slot.setPersonality) slot.setPersonality(i);
+            this.vialSlots.push(slot);
         }
 
         var hintText = (level && level.hint) || '';
@@ -633,7 +635,9 @@ export class UIScene extends Phaser.Scene {
         if (last) delete this._flights[id];
         this._onSplash(data);
         var slot = this._slotById(id);
-        if (slot && slot.juicyCatch) slot.juicyCatch();
+        if (slot && slot.juicyCatch) {
+            slot.juicyCatch(data.dunk ? 'dunk' : !!data.combo);
+        }
         this._basketBurst(data);
         if (slot && data.fill != null) slot.setFill(data.fill);
         if (window.AudioManager && AudioManager.playPour) AudioManager.playPour();
@@ -716,7 +720,7 @@ export class UIScene extends Phaser.Scene {
                 slot.gfx.setVisible(true);
                 slot.icon.setVisible(false);
                 slot.label.setVisible(true);
-                if (isNew && previousId !== v.id) slot.appear();
+                if (isNew && previousId !== v.id) slot.appear({ silent: previousId == null });
             } else {
                 slot.vialId = null;
                 slot.setFill(0, true);
@@ -1089,8 +1093,8 @@ export class UIScene extends Phaser.Scene {
         var overlay = this.add.container(0, 0).setDepth(210).setAlpha(0);
         this.endOverlay = overlay;
 
-        var scrapW = extra.finale ? 620 : (extra.subtitle ? 600 : 560);
-        var scrapH = extra.finale ? 220 : (extra.subtitle ? 170 : 140);
+        var scrapW = extra.finale ? 620 : (extra.campaignCta ? 620 : (extra.subtitle ? 600 : 560));
+        var scrapH = extra.finale ? 220 : (extra.campaignCta ? 200 : (extra.subtitle ? 180 : 140));
         var scrap = this.add.graphics();
         if (window.Paper && Paper.drawScrap) {
             Paper.drawScrap(
@@ -1107,10 +1111,11 @@ export class UIScene extends Phaser.Scene {
             scrap.fillStyle(0xe6d8c0, 1);
             scrap.fillRoundedRect(-scrapW / 2, -scrapH / 2, scrapW, scrapH, 18);
         }
-        scrap.setPosition(W / 2, extra.finale ? H * 0.28 : H * 0.3);
+        var scrapY = extra.finale ? H * 0.28 : H * 0.32;
+        scrap.setPosition(W / 2, scrapY);
         overlay.add(scrap);
 
-        var titleY = extra.finale ? H * 0.22 : (extra.subtitle ? H * 0.26 : H * 0.3);
+        var titleY = extra.finale ? H * 0.24 : (extra.campaignCta || extra.subtitle ? H * 0.3 : H * 0.32);
         var titleSize = extra.subtitle || extra.campaignCta ? '48px' : '56px';
         var titleText = this.add.text(W / 2, titleY, opts.title || '', {
             fontFamily: 'Arial, sans-serif',
@@ -1124,7 +1129,7 @@ export class UIScene extends Phaser.Scene {
         if (win) this._popWinStars(overlay, W / 2, titleY - 78);
         if (win) this._startWinSerpentine();
         if (extra.subtitle) {
-            overlay.add(this.add.text(W / 2, extra.finale ? H * 0.335 : H * 0.36, extra.subtitle, {
+            overlay.add(this.add.text(W / 2, extra.finale ? H * 0.345 : H * 0.385, extra.subtitle, {
                 fontFamily: 'Arial, sans-serif',
                 fontSize: extra.finale ? '26px' : '28px',
                 color: '#5a4638',
@@ -1198,6 +1203,96 @@ export class UIScene extends Phaser.Scene {
             duration: 420,
             ease: 'Back.easeOut'
         });
+        if (!win) {
+            this.time.delayedCall(GameSettings.reducedMotion() ? 40 : 420, function () {
+                if (!self.endOverlay) return;
+                self._slamLoseStamp(overlay, W / 2, scrapY - scrapH * 0.5 + 4);
+            });
+        }
+    }
+
+    _slamLoseStamp(overlay, cx, cy) {
+        var stamp = this.add.container(cx, cy);
+        overlay.add(stamp);
+        var g = this.add.graphics();
+        if (window.Paper && Paper.drawScrap) {
+            Paper.drawScrap(g, 0, 0, 188, 64, 0xc45c48, 23, {
+                jag: 7,
+                shadowX: 8,
+                shadowY: 10,
+                fibers: true
+            });
+        } else {
+            g.fillStyle(0xc45c48, 1);
+            g.fillRoundedRect(-94, -32, 188, 64, 10);
+        }
+        stamp.add(g);
+        stamp.add(this.add.text(0, 0, 'НЕ ВЫШЛО', {
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '26px',
+            fontStyle: 'bold',
+            color: '#3d2218'
+        }).setOrigin(0.5));
+        stamp.setAngle(-14);
+        if (window.AudioManager && AudioManager.playStamp) AudioManager.playStamp();
+        this._spawnLoseScraps(overlay, cx, cy);
+        if (GameSettings.reducedMotion()) {
+            stamp.setScale(1);
+            return;
+        }
+        stamp.setScale(2.2);
+        stamp.y = cy - 28;
+        this.tweens.add({
+            targets: stamp,
+            scale: 1,
+            y: cy,
+            duration: 260,
+            ease: 'Back.easeOut'
+        });
+        this.tweens.add({
+            targets: stamp,
+            angle: -9,
+            duration: 380,
+            ease: 'Bounce.easeOut'
+        });
+        this.cameras.main.shake(90, 0.006);
+    }
+
+    _spawnLoseScraps(overlay, cx, cy) {
+        var n = GameSettings.reducedMotion() ? 3 : 7;
+        var i;
+        for (i = 0; i < n; i++) {
+            var bit = this.add.graphics();
+            var w = Phaser.Math.Between(18, 36);
+            var h = Phaser.Math.Between(12, 22);
+            if (window.Paper && Paper.drawScrap) {
+                Paper.drawScrap(bit, 0, 0, w, h, i % 2 ? 0xe6d8c0 : 0xc9b89a, 40 + i, {
+                    jag: 5,
+                    shadowX: 6,
+                    shadowY: 8,
+                    fibers: false
+                });
+            } else {
+                bit.fillStyle(0xe6d8c0, 1);
+                bit.fillRect(-w / 2, -h / 2, w, h);
+            }
+            bit.setPosition(cx, cy);
+            overlay.add(bit);
+            if (GameSettings.reducedMotion()) {
+                bit.setAlpha(0.7);
+                continue;
+            }
+            this.tweens.add({
+                targets: bit,
+                x: cx + Phaser.Math.Between(-180, 180),
+                y: cy + Phaser.Math.Between(40, 160),
+                angle: Phaser.Math.Between(-80, 80),
+                alpha: 0,
+                duration: Phaser.Math.Between(520, 820),
+                ease: 'Cubic.easeOut',
+                onComplete: function (tw, tgt) { tgt[0].destroy(); }
+            });
+        }
     }
 
     _popWinStars(overlay, cx, cy) {

@@ -1,4 +1,4 @@
-import { Enemy } from '../entities/Enemy.js?v=1.7.11';
+import { Enemy } from '../entities/Enemy.js?v=1.7.25';
 import { EnemyProjectile } from '../entities/EnemyProjectile.js';
 import { dist, pointToSegmentDist, polylineLength } from '../utils/Geometry.js';
 
@@ -198,7 +198,9 @@ export class EnemyManager {
             enemy.nextActionAt = now + (cfg.noticeInterval || 4300);
             notice = true;
             this.scene.tweens.add({
-                targets: [enemy.dot, enemy.badge],
+                targets: enemy.paper && enemy.paper.visible
+                    ? [enemy.paper]
+                    : [enemy.dot, enemy.badge],
                 scale: 1.35,
                 duration: 120,
                 yoyo: true

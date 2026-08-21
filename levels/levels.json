@@ -4721,7 +4721,7 @@
       ],
       "boosters": [],
       "constraints": {
-        "maxCuts": 5,
+        "maxCuts": 6,
         "winCondition": "vials"
       },
       "magneticPaths": [],
@@ -4732,12 +4732,6 @@
       "vials": [
         {
           "color": "red"
-        },
-        {
-          "color": "red"
-        },
-        {
-          "color": "blue"
         },
         {
           "color": "blue"

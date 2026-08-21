@@ -6,8 +6,8 @@
  * пропорций и центрируется. Так одинаково хорошо и на телефоне, и в браузере
  * на десктопе (по бокам/сверху будут аккуратные тёмные поля).
  */
-import { GameScene } from './scenes/GameScene.js?v=1.7.21';
-import { UIScene } from './scenes/UIScene.js?v=1.7.17';
+import { GameScene } from './scenes/GameScene.js?v=1.7.30';
+import { UIScene } from './scenes/UIScene.js?v=1.7.24';
 import { SkinSelectScene } from './scenes/SkinSelectScene.js?v=1.7.18';
 
 var config = {
