@@ -1150,13 +1150,12 @@ def campaign_levels(lab: list[dict]) -> list[dict]:
             pack="campaign",
             name="Спираль",
             vials=[
-                {"color": "red"}, {"color": "red"},
-                {"color": "blue"}, {"color": "blue"},
+                {"color": "red"}, {"color": "blue"},
                 {"color": "yellow"}, {"color": "green"},
             ],
             enemies=[{"type": "pingpong", "x": 360, "y": 210, "vx": 64, "vy": 40}],
             polygons=square_spiral(["red", "blue", "yellow", "green"], 62),
-            constraints={"maxCuts": 5, "winCondition": "vials"},
+            constraints={"maxCuts": 6, "winCondition": "vials"},
         ),
         base(
             id=22,

@@ -49,6 +49,7 @@ export class VialManager {
 
     wouldExhaustColor(color, cutArea, availableArea) {
         if (!this.hasAnyOf(color)) return false;
+        if (this.remainingOf(color).length <= 1) return false;
         var accepted = Math.min(cutArea, this.displayedRoom(color));
         var requiredAfter = Math.max(0, this.requiredArea(color) - accepted);
         if (requiredAfter <= 1) return false;

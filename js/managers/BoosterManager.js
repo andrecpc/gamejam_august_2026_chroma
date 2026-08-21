@@ -1,4 +1,4 @@
-import { Booster } from '../entities/Booster.js?v=1.7.7';
+import { Booster } from '../entities/Booster.js?v=1.7.28';
 import { dist } from '../utils/Geometry.js';
 
 var LABELS = {

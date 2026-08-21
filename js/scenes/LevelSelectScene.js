@@ -26,6 +26,7 @@
 
             Background.create(this);
             if (window.AudioManager && AudioManager.startMusic) {
+                if (AudioManager.stopCritters) AudioManager.stopCritters();
                 AudioManager.startMusic('normal');
                 if (!GameSettings.get('musicOn') && AudioManager.stopMusic) {
                     AudioManager.stopMusic();

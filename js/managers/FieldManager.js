@@ -294,6 +294,18 @@ export class FieldManager {
                         break;
                     }
                 }
+                if (parts.length >= 2) break;
+                var colorLooped = this._loopsFromTrail(
+                    [colorHits[i].points],
+                    trail,
+                    polygonArea(colorHits[i].points)
+                );
+                if (colorLooped && colorLooped.parts && colorLooped.parts.length >= 2) {
+                    parts = colorLooped.parts;
+                    buffer = colorLooped.buffer || buffer;
+                    working = [colorHits[i].points];
+                    unclaimedArea = polygonArea(colorHits[i].points);
+                }
             }
         }
 
@@ -720,7 +732,10 @@ export class FieldManager {
         }
         order.sort(function (a, b) { return b.a - a.a; });
         var n = order.length;
-        for (i = 0; i < this.colorLayers.length; i++) this.colorLayers[i].clear();
+        for (i = 0; i < this.colorLayers.length; i++) {
+            if (this.colorLayers[i].mask) this.colorLayers[i].clearMask(true);
+            this.colorLayers[i].clear();
+        }
         for (i = 0; i < n; i++) {
             var col = this.colors[order[i].i];
             var tint = hexToInt(this.palette[col.color] || 0x888888);
@@ -834,7 +849,11 @@ export class FieldManager {
         this.gfx.destroy();
         this.edge.destroy();
         var i;
-        for (i = 0; i < this.colorLayers.length; i++) this.colorLayers[i].destroy();
+        for (i = 0; i < this.colorLayers.length; i++) {
+            if (this.colorLayers[i].mask) this.colorLayers[i].clearMask(true);
+            if (this.colorLayers[i]._clipGfx) this.colorLayers[i]._clipGfx.destroy();
+            this.colorLayers[i].destroy();
+        }
         this.colorLayers = [];
         for (i = 0; i < this.underScraps.length; i++) {
             if (this.underScraps[i] && this.underScraps[i].destroy) this.underScraps[i].destroy();

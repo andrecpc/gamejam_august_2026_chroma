@@ -33,6 +33,16 @@ function fillPts(g, pts) {
     g.fillPath();
 }
 
+function strokePts(g, pts) {
+    if (!pts.length) return;
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y);
+    var i;
+    for (i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    g.closePath();
+    g.strokePath();
+}
+
 function darkenLocal(color, k) {
     var r = (color >> 16) & 255;
     var g = (color >> 8) & 255;
@@ -71,6 +81,14 @@ export class Vial {
             color: '#f6efe4'
         }).setOrigin(0.5, 0);
         this.time = 0;
+        this.idlePhase = 0;
+        this.idleHz = 1.15;
+        this.baseLabelY = y + 78;
+    }
+
+    setPersonality(index) {
+        this.idlePhase = (index || 0) * 1.73 + 0.31;
+        this.idleHz = 0.95 + (index || 0) * 0.21;
     }
 
     setColor(colorName, palette) {
@@ -115,16 +133,19 @@ export class Vial {
         this.pulse = Math.max(0, this.pulse - dt * 2.8);
         var punch = 1 + Math.sin((1 - this.pulse) * Math.PI) * this.pulse * 0.09;
         this.visualScale = punch;
+        this.label.setPosition(this.x, this.baseLabelY);
         this.label.setScale(punch * this.squashX, punch * this.squashY);
+        var outline = ((Math.sin(this.time * this.idleHz + this.idlePhase) + 1) * 40) | 0;
         var key = (this.fill * 1000 | 0) + ':' + (this.visualScale * 200 | 0) + ':' +
             ((this.gfx.alpha * 100) | 0) + ':' + this.colorName + ':' +
-            ((this.squashX * 100) | 0) + ':' + ((this.squashY * 100) | 0);
+            ((this.squashX * 100) | 0) + ':' + ((this.squashY * 100) | 0) + ':' +
+            outline;
         if (key === this._drawKey) return;
         this._drawKey = key;
         this._draw();
     }
 
-    appear() {
+    appear(opts) {
         this.squashX = 1;
         this.squashY = 1;
         if (GameSettings.reducedMotion()) {
@@ -151,6 +172,9 @@ export class Vial {
             duration: 180,
             ease: 'Quad.easeOut'
         });
+        if (window.AudioManager && AudioManager.playRustle && !(opts && opts.silent)) {
+            AudioManager.playRustle();
+        }
     }
 
     _draw() {
@@ -225,9 +249,19 @@ export class Vial {
                 }
             }
         }
+
+        if (!GameSettings.reducedMotion()) {
+            var glow = 0.5 + Math.sin(this.time * this.idleHz + this.idlePhase) * 0.5;
+            if (this.fill > 0.72) glow = Math.min(1, glow + 0.18);
+            g.lineStyle(2.4 + glow * 2.6, 0xffffff, 0.22 + glow * 0.5);
+            strokePts(g, deckle);
+        } else {
+            g.lineStyle(3, 0xffffff, 0.42);
+            strokePts(g, deckle);
+        }
     }
 
-    juicyCatch() {
+    juicyCatch(strong) {
         this.pulse = 1;
         if (GameSettings.reducedMotion()) {
             this.squashX = 1;
@@ -235,13 +269,14 @@ export class Vial {
             return;
         }
         this.scene.tweens.killTweensOf(this);
-        this.squashX = 1.22;
-        this.squashY = 0.78;
+        var dunk = strong === 'dunk';
+        this.squashX = dunk ? 1.5 : (strong ? 1.38 : 1.22);
+        this.squashY = dunk ? 0.6 : (strong ? 0.68 : 0.78);
         this.scene.tweens.add({
             targets: this,
             squashX: 1,
             squashY: 1,
-            duration: 420,
+            duration: dunk ? 620 : (strong ? 560 : 420),
             ease: 'Elastic.easeOut'
         });
     }

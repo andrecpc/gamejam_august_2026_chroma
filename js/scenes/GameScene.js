@@ -1,10 +1,10 @@
 import { Player } from '../entities/Player.js?v=1.7.18';
-import { FieldManager } from '../managers/FieldManager.js?v=1.7.18';
-import { VialManager } from '../managers/VialManager.js?v=1.5.5';
+import { FieldManager } from '../managers/FieldManager.js?v=1.7.30';
+import { VialManager } from '../managers/VialManager.js?v=1.7.30';
 import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
 import { MagneticManager } from '../managers/MagneticManager.js';
-import { BoosterManager } from '../managers/BoosterManager.js?v=1.7.11';
-import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.11';
+import { BoosterManager } from '../managers/BoosterManager.js?v=1.7.28';
+import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.25';
 import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.7.11';
 import { BossManager } from '../managers/BossManager.js?v=1.7.11';
 import { RewardedAdManager } from '../managers/RewardedAdManager.js?v=1.7.8';
@@ -50,6 +50,8 @@ export class GameScene extends Phaser.Scene {
         this._introHold = false;
         this.playStartedAt = 0;
         this._bossDeathPlaying = false;
+        this._cutStreak = 0;
+        this._comboHit = false;
     }
 
     create() {
@@ -80,9 +82,7 @@ export class GameScene extends Phaser.Scene {
         this.boosters = new BoosterManager(this, this.level);
         this.rewards = new RewardedAdManager(this);
         if (window.AudioManager && AudioManager.startMusic) {
-            AudioManager.startMusic(
-                this.bossManager && this.bossManager.active ? 'boss' : 'normal'
-            );
+            AudioManager.startMusic(this._levelMusicMode());
         }
 
         this.confetti = this.add.group({ maxSize: 280, runChildUpdate: true });
@@ -190,6 +190,7 @@ export class GameScene extends Phaser.Scene {
         if (this.time) this.time.removeAllEvents();
         this._finaleConfettiEvent = null;
         if (window.AudioManager && AudioManager.stopFinale) AudioManager.stopFinale();
+        if (window.AudioManager && AudioManager.stopCritters) AudioManager.stopCritters();
         this.enemies = [];
     }
 
@@ -463,8 +464,12 @@ export class GameScene extends Phaser.Scene {
         var self = this;
         var objectiveResult = null;
         var coreBlocked = false;
+        var flights = [];
         cut.pieces.sort(function (a, b) { return b.area - a.area; });
         var main = cut.pieces[0];
+        var hasPourable = cut.pieces.some(function (p) {
+            return self.vials.canClaim(p.color) === 'pour';
+        });
 
         cut.pieces.forEach(function (piece) {
             if (self.bossManager && self.bossManager.protectsColor(piece.color)) {
@@ -475,7 +480,7 @@ export class GameScene extends Phaser.Scene {
             }
             var mode = self.vials.canClaim(piece.color);
             if (mode === 'blocked') {
-                if (piece === main || piece.area > (main.area * 0.45)) {
+                if (!hasPourable && (piece === main || piece.area > (main.area * 0.45))) {
                     anyReject = true;
                     noBasket = true;
                     self.field.bouncePolys(piece.polys);
@@ -516,8 +521,10 @@ export class GameScene extends Phaser.Scene {
                     var popped = result.events.some(function (p) {
                         return p.type === 'pop' && p.vial.id === ev.vial.id;
                     });
-                    self.game.events.emit('game:basket-lock', { vialId: ev.vial.id });
-                    self._flyDrops(piece, ev.amount, ev.vial.id, {
+                    flights.push({
+                        piece: piece,
+                        amount: ev.amount,
+                        vialId: ev.vial.id,
                         fill: ev.vial.fill,
                         popped: popped,
                         color: piece.color
@@ -530,6 +537,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         if (anyReject && !anyAccept) {
+            this._resetCutStreak();
             if (window.AudioManager && AudioManager.playError) AudioManager.playError();
             if (coreBlocked) {
                 this._floatText(
@@ -564,6 +572,7 @@ export class GameScene extends Phaser.Scene {
                 this._failCut('no-split');
                 return;
             }
+            this._registerSuccessfulCut();
             if (this.bossManager) {
                 this.bossManager.onPlayerClaim(applied.claimed);
                 var colorAreas = {};
@@ -579,12 +588,14 @@ export class GameScene extends Phaser.Scene {
             function kill(e) {
                 if (!e || dead.indexOf(e) !== -1) return;
                 dead.push(e);
-                self._impactBurst(e.x, e.y, 0xffd24a, 8);
+                self._popEnemy(e);
                 e.kill();
             }
             (applied.killed || []).forEach(kill);
-            if (window.AudioManager && AudioManager.playCut) AudioManager.playCut();
-            GameSettings.vibrate(12);
+            if (window.AudioManager && AudioManager.playCut) {
+                AudioManager.playCut({ combo: this._comboHit });
+            }
+            GameSettings.vibrate(this._comboHit ? 18 : 12);
             this._cutJuice(trail, cut.pieces);
             this._fireTutorials('cut');
             this.game.events.emit('game:tutorial-dismiss', { reason: 'cut' });
@@ -593,7 +604,11 @@ export class GameScene extends Phaser.Scene {
             }
             if (dead.length) {
                 this._floatText(this.player.x, this.player.y - 48, 'ПОЙМАН!');
+                this.time.delayedCall(70, function () {
+                    if (window.AudioManager && AudioManager.playCatch) AudioManager.playCatch();
+                });
             }
+            this._dispatchBasketFlights(flights, !!(objectiveResult && objectiveResult.win));
         }
         if (reserveColor && anyAccept) {
             this._floatText(
@@ -610,6 +625,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     _failCut(reason) {
+        this._resetCutStreak();
         if (reason === 'no-split') {
             this._floatText(this.player.x, this.player.y - 28, 'Контур не замкнулся');
             if (window.AudioManager && AudioManager.playError) AudioManager.playError();
@@ -622,6 +638,53 @@ export class GameScene extends Phaser.Scene {
         }
         this._toastNoBasket();
         if (window.AudioManager && AudioManager.playError) AudioManager.playError();
+    }
+
+    _resetCutStreak() {
+        this._cutStreak = 0;
+        this._comboHit = false;
+    }
+
+    _registerSuccessfulCut() {
+        this._cutStreak = (this._cutStreak || 0) + 1;
+        this._comboHit = this._cutStreak > 0 && this._cutStreak % 3 === 0;
+        if (!this._comboHit) return;
+        this._floatText(this.player.x, this.player.y - 72, 'КОМБО!', {
+            size: '30px',
+            color: '#f7f1e4',
+            hold: 700,
+            rise: 48
+        });
+        this._spawnPaperCrumbs(this.player.x, this.player.y, 0xf7f1e4, 14);
+        GameSettings.vibrate([8, 20, 16]);
+    }
+
+    _dispatchBasketFlights(flights, winningCut) {
+        if (!flights || !flights.length) return;
+        var last = flights.length - 1;
+        var slowLast = !GameSettings.reducedMotion() && (
+            winningCut || (this.vials && this.vials.allDone && this.vials.allDone())
+        );
+        var i;
+        for (i = 0; i < flights.length; i++) {
+            var f = flights[i];
+            this.game.events.emit('game:basket-lock', { vialId: f.vialId });
+            this._flyDrops(f.piece, f.amount, f.vialId, {
+                fill: f.fill,
+                popped: f.popped,
+                color: f.color,
+                combo: this._comboHit,
+                slowMo: slowLast && i === last
+            });
+        }
+    }
+
+    _levelMusicMode() {
+        if (this.bossManager && this.bossManager.active) return 'boss';
+        if (this.level && this.level.constraints && this.level.constraints.time) {
+            return 'timed';
+        }
+        return 'normal';
     }
 
     _flyDrops(piece, area, vialId, payload) {
@@ -645,6 +708,8 @@ export class GameScene extends Phaser.Scene {
                 color: payload.color,
                 fill: payload.fill,
                 popped: payload.popped,
+                combo: !!payload.combo,
+                dunk: !!payload.slowMo,
                 x: target.x,
                 y: target.y
             });
@@ -654,18 +719,18 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         var launch = function () {
-            self._launchCrumple(from, r, color, target, arrive);
+            self._launchCrumple(from, r, color, target, arrive, payload.slowMo);
         };
         if (piece && piece.polys && piece.polys[0] && !piece._juicePeeled) {
             piece._juicePeeled = true;
-            this._peelThenCrumple(piece, color, from, launch);
+            this._peelThenCrumple(piece, color, from, launch, payload.slowMo);
             return;
         }
         if (window.AudioManager && AudioManager.playRustle) AudioManager.playRustle();
         launch();
     }
 
-    _peelThenCrumple(piece, color, from, done) {
+    _peelThenCrumple(piece, color, from, done, slowMo) {
         var poly = piece.polys[0];
         var c = polyCentroid(poly) || from;
         var wrap = this.add.container(c.x, c.y).setDepth(17);
@@ -689,21 +754,21 @@ export class GameScene extends Phaser.Scene {
             g.closePath();
             g.fillPath();
         }
-        this._spawnPaperCrumbs(c.x, c.y, color, 10);
+        this._spawnPaperCrumbs(c.x, c.y, color, slowMo ? 16 : 10);
         if (window.AudioManager && AudioManager.playRustle) AudioManager.playRustle();
         var self = this;
         this.tweens.add({
             targets: wrap,
-            y: c.y - 12,
-            scale: 1.04,
-            duration: 160,
+            y: c.y - (slowMo ? 16 : 12),
+            scale: slowMo ? 1.06 : 1.04,
+            duration: slowMo ? 180 : 160,
             ease: 'Back.easeOut',
             onComplete: function () {
                 self.tweens.add({
                     targets: wrap,
                     scale: 0.18,
                     angle: Phaser.Math.Between(-48, 48),
-                    duration: 170,
+                    duration: slowMo ? 130 : 170,
                     ease: 'Quad.easeIn',
                     onComplete: function () {
                         wrap.destroy(true);
@@ -714,36 +779,105 @@ export class GameScene extends Phaser.Scene {
         });
     }
 
-    _launchCrumple(from, r, color, target, arrive) {
+    _launchCrumple(from, r, color, target, arrive, dunk) {
         var self = this;
         var drop = this.add.graphics().setDepth(18);
         drop.x = from.x;
         drop.y = from.y - 8;
         if (window.Paper && Paper.drawCrumple) {
-            Paper.drawCrumple(drop, 0, 0, r, color, Math.round(from.x * 13 + from.y * 7) >>> 0);
+            Paper.drawCrumple(drop, 0, 0, r * (dunk ? 1.22 : 1), color, Math.round(from.x * 13 + from.y * 7) >>> 0);
         } else {
             drop.fillStyle(color, 0.9);
             drop.fillCircle(0, 0, r);
         }
+        if (!dunk) {
+            this.tweens.add({
+                targets: drop,
+                scaleX: 1.32,
+                scaleY: 0.58,
+                duration: 110,
+                yoyo: true,
+                ease: 'Quad.easeIn',
+                onComplete: function () {
+                    self.tweens.add({
+                        targets: drop,
+                        x: target.x + Phaser.Math.Between(-10, 10),
+                        y: target.y,
+                        scale: 0.45,
+                        duration: 420,
+                        ease: 'Cubic.easeIn',
+                        onComplete: function () {
+                            drop.destroy();
+                            arrive();
+                        }
+                    });
+                }
+            });
+            return;
+        }
+        var hangX = from.x + (target.x - from.x) * 0.4;
+        var hangY = Math.max(72, Math.min(from.y, target.y) - 86);
         this.tweens.add({
             targets: drop,
-            scaleX: 1.32,
-            scaleY: 0.58,
-            duration: 110,
-            yoyo: true,
-            ease: 'Quad.easeIn',
+            x: hangX,
+            y: hangY,
+            scale: 1.34,
+            angle: 70,
+            duration: 360,
+            ease: 'Quad.easeOut',
             onComplete: function () {
+                self._spawnDunkStreak(drop, r, color);
                 self.tweens.add({
                     targets: drop,
-                    x: target.x + Phaser.Math.Between(-10, 10),
+                    x: target.x,
                     y: target.y,
-                    scale: 0.45,
-                    duration: 420,
+                    scale: 0.4,
+                    angle: 390,
+                    duration: 210,
                     ease: 'Cubic.easeIn',
                     onComplete: function () {
+                        var hx = target.x;
+                        var hy = target.y;
                         drop.destroy();
+                        if (!GameSettings.reducedMotion()) {
+                            self.cameras.main.shake(140, 0.012);
+                            self._spawnPaperCrumbs(hx, hy, color, 18);
+                            self._impactBurst(hx, hy, color, 16);
+                        }
+                        if (window.AudioManager && AudioManager.playSwish) AudioManager.playSwish();
                         arrive();
                     }
+                });
+            }
+        });
+    }
+
+    _spawnDunkStreak(drop, r, color) {
+        var self = this;
+        var n = 0;
+        this.time.addEvent({
+            delay: 26,
+            repeat: 7,
+            callback: function () {
+                if (!drop || !drop.active) return;
+                n += 1;
+                var ghost = self.add.graphics().setDepth(17);
+                ghost.setPosition(drop.x, drop.y);
+                ghost.setScale(drop.scaleX, drop.scaleY);
+                ghost.setAngle(drop.angle);
+                ghost.setAlpha(0.42 - n * 0.04);
+                if (window.Paper && Paper.drawCrumple) {
+                    Paper.drawCrumple(ghost, 0, 0, r, color, (n * 19) >>> 0);
+                } else {
+                    ghost.fillStyle(color, 0.4);
+                    ghost.fillCircle(0, 0, r);
+                }
+                self.tweens.add({
+                    targets: ghost,
+                    alpha: 0,
+                    scale: 0.2,
+                    duration: 170,
+                    onComplete: function () { ghost.destroy(); }
                 });
             }
         });
@@ -769,7 +903,14 @@ export class GameScene extends Phaser.Scene {
             var tint = pieces[0].color && this.level.palette
                 ? hexToInt(this.level.palette[pieces[0].color] || 0xf7f1e6)
                 : 0xf7f1e6;
-            if (c) this._spawnPaperCrumbs(c.x, c.y, tint, 8);
+            if (c) this._spawnPaperCrumbs(c.x, c.y, tint, this._comboHit ? 16 : 8);
+        }
+        if (this._comboHit && trail && trail.length > 2) {
+            var extra = Math.max(1, Math.floor(trail.length / 10));
+            var k;
+            for (k = 0; k < trail.length; k += extra) {
+                this._spawnPaperCrumb(trail[k].x, trail[k].y, 0xf7f1e6, false);
+            }
         }
     }
 
@@ -900,6 +1041,54 @@ export class GameScene extends Phaser.Scene {
                 duration: Phaser.Math.Between(230, 360),
                 ease: 'Quad.easeOut',
                 onComplete: function (tw, targets) { targets[0].destroy(); }
+            });
+        }
+    }
+
+    _popEnemy(enemy) {
+        var x = enemy.x;
+        var y = enemy.y;
+        var color = enemy.tint || 0xffd24a;
+        this._impactBurst(x, y, color, GameSettings.reducedMotion() ? 8 : 18);
+        this._spawnPaperCrumbs(x, y, color, 14);
+        this._spawnPaperCrumbs(x, y, 0xf7f1e6, 10);
+        if (GameSettings.reducedMotion()) return;
+        this.cameras.main.shake(90, 0.008);
+        var rim = this.add.circle(x, y, 10, 0xf7f1e6, 0)
+            .setStrokeStyle(5, 0xf7f1e6, 0.95)
+            .setDepth(19);
+        this.confetti.add(rim);
+        this.tweens.add({
+            targets: rim,
+            scale: 5.4,
+            alpha: 0,
+            duration: 360,
+            ease: 'Cubic.easeOut',
+            onComplete: function () { rim.destroy(); }
+        });
+        var i;
+        for (i = 0; i < 5; i++) {
+            var bit = this.add.graphics().setDepth(19);
+            var w = Phaser.Math.Between(10, 18);
+            var h = Phaser.Math.Between(8, 14);
+            if (window.Paper && Paper.drawScrap) {
+                Paper.drawScrap(bit, 0, 0, w, h, i % 2 ? color : 0xf7f1e6, 70 + i, {
+                    jag: 4, shadowX: 4, shadowY: 5, fibers: false
+                });
+            } else {
+                bit.fillStyle(color, 1);
+                bit.fillCircle(0, 0, w / 2);
+            }
+            bit.setPosition(x, y);
+            this.tweens.add({
+                targets: bit,
+                x: x + Phaser.Math.Between(-70, 70),
+                y: y + Phaser.Math.Between(-50, 60),
+                angle: Phaser.Math.Between(-120, 120),
+                alpha: 0,
+                duration: Phaser.Math.Between(280, 460),
+                ease: 'Quad.easeOut',
+                onComplete: function (tw, tgt) { tgt[0].destroy(); }
             });
         }
     }
@@ -1047,6 +1236,7 @@ export class GameScene extends Phaser.Scene {
         }
         if (this.time.now < this.invulnUntil) return false;
         this.invulnUntil = this.time.now + 700;
+        this._resetCutStreak();
         this.lives -= 1;
         if (window.AudioManager && AudioManager.playHit) AudioManager.playHit();
         GameSettings.vibrate([35, 25, 45]);
@@ -1183,7 +1373,8 @@ export class GameScene extends Phaser.Scene {
             fill: 1,
             popped: true,
             color: vial.color,
-            from: { x: target.x, y: target.y - 90 }
+            from: { x: target.x, y: target.y - 90 },
+            slowMo: !!(this.vials && this.vials.allDone && this.vials.allDone())
         });
         this.game.events.emit('game:vials-changed', this.vials.snapshot());
         if (this.objectives) {
@@ -1271,6 +1462,7 @@ export class GameScene extends Phaser.Scene {
     _win() {
         this.gameOver = true;
         this.won = true;
+        if (window.AudioManager && AudioManager.stopCritters) AudioManager.stopCritters();
         if (!window.QAMode || !QAMode.enabled) {
             GameSettings.completeLevel(this.levelId, this.packId);
             if (this._isTrainingComplete()) {
@@ -1347,14 +1539,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     _needsBasketWinWait() {
-        var wc = this.objectives && this.objectives.winCondition;
-        if (wc && wc !== 'vials' && wc !== 'all') return false;
         var ui = this.scene.get('UI');
         return !!(ui && ui.hasPendingBaskets && ui.hasPendingBaskets());
     }
 
     _onBasketsIdle() {
         if (!this._pendingWin || this.won) return;
+        if (this._needsBasketWinWait()) return;
         if (this.bossManager && this.bossManager.deathAnimUntil &&
             this.time.now < this.bossManager.deathAnimUntil) {
             return;
@@ -1372,14 +1563,14 @@ export class GameScene extends Phaser.Scene {
                 this._pendingWin = true;
                 this._bossDeathPlaying = true;
                 if (this._needsBasketWinWait()) {
-                    this.time.delayedCall(1800, this._onBasketsIdle, [], this);
+                    this.time.delayedCall(4200, this._onBasketsIdle, [], this);
                 }
                 return true;
             }
             if (this._needsBasketWinWait()) {
                 this.gameOver = true;
                 this._pendingWin = true;
-                this.time.delayedCall(1800, this._onBasketsIdle, [], this);
+                this.time.delayedCall(4200, this._onBasketsIdle, [], this);
                 return true;
             }
             this._win();
@@ -1397,6 +1588,10 @@ export class GameScene extends Phaser.Scene {
         this.loseKind = kind || 'lives';
         this._resetStick();
         this._lockStickUntilRelease();
+        if (window.AudioManager) {
+            if (AudioManager.stopCritters) AudioManager.stopCritters();
+            if (AudioManager.startMusic) AudioManager.startMusic('normal');
+        }
         this.game.events.emit('game:over', { win: false, level: this.levelId });
         this._overlay(reason || 'ПРОИГРЫШ', false);
     }
@@ -1445,7 +1640,10 @@ export class GameScene extends Phaser.Scene {
                 this._floatText(this.player.x, this.player.y - 28, 'ВОСКРЕШЕНИЕ!');
             }
             this.game.events.emit('game:revived');
-            if (window.AudioManager) AudioManager.playSuccess();
+            if (window.AudioManager) {
+                if (AudioManager.startMusic) AudioManager.startMusic(this._levelMusicMode());
+                if (AudioManager.playSuccess) AudioManager.playSuccess();
+            }
             var ui = this.scene.get('UI');
             if (ui && ui.hideEndOverlay) ui.hideEndOverlay();
             return true;
