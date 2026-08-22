@@ -236,6 +236,19 @@ export class EnemyManager {
         return false;
     }
 
+    spawnChase(x, y, speed) {
+        var enemy = new Enemy(this.scene);
+        enemy.spawn({
+            type: 'chase',
+            x: x,
+            y: y,
+            speed: speed || 72
+        });
+        this.enemies.push(enemy);
+        this.scene.enemies = this.enemies;
+        return enemy;
+    }
+
     destroy() {
         if (!this.enemies) return;
         for (var i = 0; i < this.enemies.length; i++) {

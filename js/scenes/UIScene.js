@@ -1,5 +1,5 @@
-import { Vial } from '../entities/Vial.js?v=1.7.23';
-import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
+import { Vial } from '../entities/Vial.js?v=1.7.32';
+import { LevelManager } from '../managers/LevelManager.js?v=1.7.31';
 
 export class UIScene extends Phaser.Scene {
     constructor() {
@@ -26,7 +26,7 @@ export class UIScene extends Phaser.Scene {
                 depth: 32, jag: 6, shadowX: 12, shadowY: 16
             });
         }
-        var packPrefix = { training: 'Обуч. ', lab: 'Лаб. ', campaign: 'Ур. ' }[this.packId] || '';
+        var packPrefix = { training: 'Обуч. ', lab: 'Лаб. ', campaign: 'Ур. ', secret: '??? ' }[this.packId] || '';
         var levelLabel = packPrefix + this.levelId;
         if (window.QAMode && QAMode.enabled) levelLabel += '  QA';
         this.add.text(48, 42, levelLabel, {
@@ -68,7 +68,8 @@ export class UIScene extends Phaser.Scene {
             fontSize: '24px',
             fontStyle: 'bold',
             color: '#3d2a22',
-            align: 'center'
+            align: 'center',
+            wordWrap: { width: W - 48 }
         }).setOrigin(0.5, 0).setDepth(34);
         this.objectiveBars = this.add.graphics().setDepth(34);
         this.bossBar = this.add.graphics().setDepth(35).setVisible(false);
@@ -95,11 +96,19 @@ export class UIScene extends Phaser.Scene {
 
         this.vialSlots = [];
         var slotY = H - 210;
-        var xs = [W / 2 - 140, W / 2, W / 2 + 140];
-        for (var i = 0; i < 3; i++) {
-            var slot = new Vial(this, xs[i], slotY, 'red', this.palette);
-            if (slot.setPersonality) slot.setPersonality(i);
-            this.vialSlots.push(slot);
+        var rainbow = level && level.secret && level.secret.rainbow;
+        if (rainbow) {
+            var wide = new Vial(this, W / 2, slotY, 'rainbow', this.palette);
+            wide.w = 220;
+            if (wide.setPersonality) wide.setPersonality(0);
+            this.vialSlots.push(wide);
+        } else {
+            var xs = [W / 2 - 140, W / 2, W / 2 + 140];
+            for (var i = 0; i < 3; i++) {
+                var slot = new Vial(this, xs[i], slotY, 'red', this.palette);
+                if (slot.setPersonality) slot.setPersonality(i);
+                this.vialSlots.push(slot);
+            }
         }
 
         var hintText = (level && level.hint) || '';
@@ -189,7 +198,8 @@ export class UIScene extends Phaser.Scene {
     }
 
     _showStartTutorials(level) {
-        if (!level || this.packId !== 'training' || !level.tutorials) return;
+        if (!level || !level.tutorials) return;
+        if (this.packId !== 'training' && this.packId !== 'secret') return;
         var items = level.tutorials;
         for (var i = 0; i < items.length; i++) {
             if (items[i].trigger !== 'start') continue;
@@ -499,6 +509,7 @@ export class UIScene extends Phaser.Scene {
         if (data.catchTarget !== null) {
             parts.push('Поймай врага ' + data.caught + '/' + data.catchTarget);
         }
+        if (data.note) parts.push(data.note);
         this.objectiveText.setText(parts.join('  •  '));
         this.objectiveBars.clear();
         var barX = this.scale.width / 2 - 130;
@@ -640,6 +651,15 @@ export class UIScene extends Phaser.Scene {
         }
         this._basketBurst(data);
         if (slot && data.fill != null) slot.setFill(data.fill);
+        if (slot && slot.setCrumbs && this._pendingSnap && this._pendingSnap.displayed) {
+            var ci;
+            for (ci = 0; ci < this._pendingSnap.displayed.length; ci++) {
+                if (this._pendingSnap.displayed[ci].id === id) {
+                    slot.setCrumbs(this._pendingSnap.displayed[ci].crumbs);
+                    break;
+                }
+            }
+        }
         if (window.AudioManager && AudioManager.playPour) AudioManager.playPour();
         if (data.popped && last) {
             this._onVialPop({
@@ -686,7 +706,7 @@ export class UIScene extends Phaser.Scene {
         var shown = (snap && snap.displayed) || [];
         var assigned = {};
         var i;
-        for (i = 0; i < 3; i++) {
+        for (i = 0; i < this.vialSlots.length; i++) {
             var held = this.vialSlots[i];
             if (held.busy && held.vialId != null) {
                 assigned[held.vialId] = true;
@@ -706,7 +726,7 @@ export class UIScene extends Phaser.Scene {
             if (!assigned[shown[i].id]) queue.push(shown[i]);
         }
         var qi = 0;
-        for (i = 0; i < 3; i++) {
+        for (i = 0; i < this.vialSlots.length; i++) {
             var slot = this.vialSlots[i];
             if (slot.busy) continue;
             if (qi < queue.length) {
@@ -715,6 +735,7 @@ export class UIScene extends Phaser.Scene {
                 var isNew = slot.vialId !== v.id;
                 slot.vialId = v.id;
                 slot.setColor(v.color, this.palette);
+                if (slot.setCrumbs) slot.setCrumbs(v.crumbs);
                 slot.setFill(v.fill, isNew);
                 slot.setRemainingCount(v.remainingOfColor);
                 slot.gfx.setVisible(true);
@@ -1094,7 +1115,7 @@ export class UIScene extends Phaser.Scene {
         this.endOverlay = overlay;
 
         var scrapW = extra.finale ? 620 : (extra.campaignCta ? 620 : (extra.subtitle ? 600 : 560));
-        var scrapH = extra.finale ? 220 : (extra.campaignCta ? 200 : (extra.subtitle ? 180 : 140));
+        var scrapH = extra.secretCta ? 240 : (extra.finale ? 220 : (extra.campaignCta ? 200 : (extra.subtitle ? 180 : 140)));
         var scrap = this.add.graphics();
         if (window.Paper && Paper.drawScrap) {
             Paper.drawScrap(
@@ -1178,8 +1199,15 @@ export class UIScene extends Phaser.Scene {
                 g.scene.start('LevelSelect', { pack: 'campaign' });
             }), { width: 620, color: 0x47a798, fontSize: 26, interactive: false }));
         } else {
+            if (extra.secretCta) {
+                addOverlayButton(new UIButton(this, W / 2, H * 0.62, 'ПЕРЕЙТИ К ???', go(function (g) {
+                    if (GameSettings.unlockSecret) GameSettings.unlockSecret();
+                    g.scene.start('LevelSelect', { pack: 'secret' });
+                }), { width: 520, color: 0x3d2a55, fontSize: 30, interactive: false }));
+            }
             var nextLabel = extra.finale ? 'В МЕНЮ' : (win ? 'ДАЛЬШЕ' : 'В МЕНЮ');
-            addOverlayButton(new UIButton(this, W / 2, H * (win ? 0.62 : (opts.continueOffer ? 0.74 : 0.64)), nextLabel, go(function (g) {
+            var nextY = extra.secretCta ? 0.74 : (win ? 0.62 : (opts.continueOffer ? 0.74 : 0.64));
+            addOverlayButton(new UIButton(this, W / 2, H * nextY, nextLabel, go(function (g) {
                 if (win && !extra.finale) {
                     var next = LevelManager.get(g, g.levelId + 1, g.packId);
                     if (next) g.scene.start('Game', { pack: g.packId, level: next.id });

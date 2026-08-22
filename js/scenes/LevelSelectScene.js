@@ -18,10 +18,14 @@
             var W = this.scale.width;
             var H = this.scale.height;
             var self = this;
+            if (window.SecretPack && SecretPack.mergeInto) {
+                SecretPack.mergeInto(this.cache.json.get('levels'));
+            }
             var meta = {
                 campaign: { title: 'КАМПАНИЯ', subtitle: 'основные уровни' },
                 training: { title: 'ОБУЧЕНИЕ', subtitle: 'знакомство с механиками' },
-                lab: { title: 'ЛАБОРАТОРИЯ', subtitle: 'черновики и стенды механик' }
+                lab: { title: 'ЛАБОРАТОРИЯ', subtitle: 'черновики и стенды механик' },
+                secret: { title: '???', subtitle: 'сюда после кампании' }
             }[this.packId] || { title: 'УРОВНИ', subtitle: '' };
 
             Background.create(this);
@@ -54,6 +58,27 @@
             if (this.packId === 'campaign' && !qaEnabled && !GameSettings.isCampaignUnlocked()) {
                 this.scene.start('Menu');
                 return;
+            }
+            if (this.packId === 'secret') {
+                if (!window.SecretPack || !SecretPack.enabled) {
+                    this.scene.start('Menu');
+                    return;
+                }
+                if (!qaEnabled && !(GameSettings.isSecretUnlocked && GameSettings.isSecretUnlocked())) {
+                    var campaignN = 0;
+                    var li;
+                    for (li = 0; li < this.cache.json.get('levels').levels.length; li++) {
+                        if ((this.cache.json.get('levels').levels[li].pack || '') === 'campaign') {
+                            campaignN++;
+                        }
+                    }
+                    if (campaignN > 0 && GameSettings.completedInPack('campaign') >= campaignN) {
+                        GameSettings.unlockSecret();
+                    } else {
+                        this.scene.start('Menu');
+                        return;
+                    }
+                }
             }
             if (qaEnabled) {
                 this.add.text(W / 2, H * 0.16, 'QA MODE • прогресс не изменён', {
@@ -101,6 +126,7 @@
             var color = unlocked ? 0x477ab4 : 0x475467;
             if (this.packId === 'lab' && unlocked) color = 0xd28e43;
             if (this.packId === 'campaign' && unlocked) color = 0x47a798;
+            if (this.packId === 'secret' && unlocked) color = 0x3d2a55;
             if (window.Paper && Paper.drawScrap) {
                 Paper.drawScrap(bg, 0, 0, size, size, color, 200 + level.id, {
                     jag: 6, shadowY: 14, fibers: true

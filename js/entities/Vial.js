@@ -61,8 +61,10 @@ export class Vial {
         this.scene = scene;
         this.x = x;
         this.y = y;
+        this.palette = palette || {};
         this.colorName = colorName;
         this.color = hexToInt(palette[colorName] || 0xff4d6d);
+        this.crumbs = [];
         this.fill = 0;
         this.targetFill = 0;
         this.pulse = 0;
@@ -96,10 +98,36 @@ export class Vial {
             this.fill = 0;
             this.targetFill = 0;
         }
+        this.palette = palette || this.palette || {};
         this.colorName = colorName;
-        this.color = hexToInt(palette[colorName] || 0xff4d6d);
+        this.color = hexToInt(this.palette[colorName] || 0xff4d6d);
         this.icon.setFillStyle(this.color);
         this._refreshLabel();
+    }
+
+    setCrumbs(crumbs) {
+        this.crumbs = crumbs || [];
+        this._drawKey = null;
+    }
+
+    _crumbTint(index, shown) {
+        var crumbs = this.crumbs || [];
+        if (!crumbs.length || this.colorName !== 'rainbow') return this.color;
+        var total = 0;
+        var k;
+        for (k = 0; k < crumbs.length; k++) total += crumbs[k].amount || 0;
+        if (total <= 0) {
+            return hexToInt((this.palette && this.palette[crumbs[index % crumbs.length].color]) || this.color);
+        }
+        var target = (index + 0.5) / Math.max(1, shown) * total;
+        var acc = 0;
+        for (k = 0; k < crumbs.length; k++) {
+            acc += crumbs[k].amount || 0;
+            if (target <= acc) {
+                return hexToInt((this.palette && this.palette[crumbs[k].color]) || this.color);
+            }
+        }
+        return hexToInt((this.palette && this.palette[crumbs[crumbs.length - 1].color]) || this.color);
     }
 
     setRemainingCount(count) {
@@ -108,7 +136,9 @@ export class Vial {
     }
 
     _refreshLabel() {
-        this.label.setText(this.colorName + '  ×' + this.remainingCount);
+        var names = { rainbow: 'радуга', tape: 'скотч', lime: 'лайм' };
+        var title = names[this.colorName] || this.colorName;
+        this.label.setText(title + '  ×' + this.remainingCount);
     }
 
     setFill(v, immediate) {
@@ -136,10 +166,11 @@ export class Vial {
         this.label.setPosition(this.x, this.baseLabelY);
         this.label.setScale(punch * this.squashX, punch * this.squashY);
         var outline = ((Math.sin(this.time * this.idleHz + this.idlePhase) + 1) * 40) | 0;
+        var crumbKey = (this.crumbs || []).map(function (c) { return c.color; }).join(',');
         var key = (this.fill * 1000 | 0) + ':' + (this.visualScale * 200 | 0) + ':' +
             ((this.gfx.alpha * 100) | 0) + ':' + this.colorName + ':' +
             ((this.squashX * 100) | 0) + ':' + ((this.squashY * 100) | 0) + ':' +
-            outline;
+            outline + ':' + crumbKey;
         if (key === this._drawKey) return;
         this._drawKey = key;
         this._draw();
@@ -204,8 +235,19 @@ export class Vial {
         fillPts(g, body.map(function (p) { return { x: p.x + 8, y: p.y + 11 }; }));
         g.fillStyle(0xf7f1e6, 1);
         fillPts(g, deckle);
-        g.fillStyle(color, 1);
-        fillPts(g, body);
+        if (this.colorName === 'rainbow') {
+            g.fillStyle(0xff4d6d, 1);
+            fillPts(g, body);
+            var stripes = [0xff8a3d, 0xffd24a, 0x3ee6a0, 0x4a9fff, 0xb07cff];
+            var si;
+            for (si = 0; si < stripes.length; si++) {
+                g.fillStyle(stripes[si], 0.92);
+                g.fillRect(x - w * 0.42, y - h * 0.34 + si * h * 0.11, w * 0.84, h * 0.1);
+            }
+        } else {
+            g.fillStyle(color, 1);
+            fillPts(g, body);
+        }
 
         if (window.Paper && Paper.craft) {
             g.fillStyle(darkenLocal(color, 0.12), 0.16);
@@ -234,17 +276,18 @@ export class Vial {
                 if (!!p.over !== (pass === 1)) continue;
                 var vis = Phaser.Math.Clamp(n - i, 0, 1);
                 if (vis <= 0.04) continue;
+                var ballColor = this._crumbTint(i, Math.max(1, Math.ceil(n)));
                 if (window.Paper && Paper.drawCrumple) {
                     Paper.drawCrumple(
                         g,
                         x + p.x * s,
                         y + p.y * s,
                         p.r * s * (0.55 + vis * 0.45),
-                        this.color,
+                        ballColor,
                         seed + i * 17
                     );
                 } else {
-                    g.fillStyle(this.color, vis);
+                    g.fillStyle(ballColor, vis);
                     g.fillCircle(x + p.x * s, y + p.y * s, p.r * s * vis);
                 }
             }

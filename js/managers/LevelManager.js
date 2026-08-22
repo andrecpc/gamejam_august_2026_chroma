@@ -12,14 +12,19 @@ var DEFAULT_PALETTE = {
     purple: 0xb07cff,
     orange: 0xff8a3d,
     cyan: 0x2ce6d0,
-    pink: 0xff5ca8
+    pink: 0xff5ca8,
+    lime: 0x9be15d,
+    tape: 0xf4ead8,
+    rainbow: 0xff4d6d
 };
 
 export var LevelManager = {
     DEFAULT_PACK: 'training',
 
     getRoot: function (scene) {
-        return scene.cache.json.get('levels');
+        var root = scene.cache.json.get('levels');
+        if (window.SecretPack && SecretPack.mergeInto) SecretPack.mergeInto(root);
+        return root;
     },
 
     packs: function (scene) {
@@ -84,6 +89,8 @@ export var LevelManager = {
         level.magneticPaths = level.magneticPaths || [];
         level.tutorials = level.tutorials || [];
         level.hint = level.hint || '';
+        level.secret = level.secret || null;
+        level.claimed = level.claimed || [];
         level.palette = Object.assign({}, DEFAULT_PALETTE, palette, level.palette || {});
         return level;
     }

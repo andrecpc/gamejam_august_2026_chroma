@@ -19,6 +19,7 @@ export class ObjectiveManager {
         this.maxCuts = this.cfg.maxCuts || 0;
         this.catchTarget = this.cfg.catchEnemies || 0;
         this.caught = 0;
+        this.note = this.cfg.note || this.cfg.hudNote || '';
         this.winCondition = this.cfg.winCondition ||
             (this.catchTarget > 0 ? 'catch' :
                 (this.coverTarget > 0 ? 'coverage' : 'vials'));
@@ -84,6 +85,9 @@ export class ObjectiveManager {
         if (this.winCondition === 'boss') won = this._bossDone();
         else if (this.winCondition === 'coverage') won = coverageDone;
         else if (this.winCondition === 'catch') won = catchDone;
+        else if (this.winCondition === 'secret') {
+            won = !!(this.scene.secret && this.scene.secret.isWon && this.scene.secret.isWon());
+        }
         else if (this.winCondition === 'all') {
             won = coverageDone && vialsDone && catchDone && this._bossDone();
         }
@@ -126,7 +130,8 @@ export class ObjectiveManager {
             catchTarget: this.catchTarget || null,
             coverage: Math.floor(this.coveragePercent()),
             coverTarget: this.coverTarget || null,
-            winCondition: this.winCondition
+            winCondition: this.winCondition,
+            note: this.note || null
         };
     }
 

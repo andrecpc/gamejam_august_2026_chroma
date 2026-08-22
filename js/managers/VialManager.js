@@ -6,7 +6,7 @@ export class VialManager {
     constructor(level, capacity) {
         this.capacity = capacity;
         this.queue = (level.vials || []).map(function (v, i) {
-            return { id: i, color: v.color, fill: 0, popped: false };
+            return { id: i, color: v.color, fill: 0, popped: false, crumbs: [] };
         });
         this._validateSupply(level);
     }
@@ -48,6 +48,7 @@ export class VialManager {
     }
 
     wouldExhaustColor(color, cutArea, availableArea) {
+        if (this.hasAnyOf('rainbow')) return false;
         if (!this.hasAnyOf(color)) return false;
         if (this.remainingOf(color).length <= 1) return false;
         var accepted = Math.min(cutArea, this.displayedRoom(color));
@@ -71,6 +72,9 @@ export class VialManager {
     }
 
     canClaim(color) {
+        if (color === 'tape') return 'vanish';
+        if (this.hasDisplayed('rainbow')) return 'pour';
+        if (this.hasAnyOf('rainbow')) return 'blocked';
         if (this.hasDisplayed(color)) return 'pour';
         if (!this.hasAnyOf(color)) return 'vanish';
         return 'blocked';
@@ -108,6 +112,8 @@ export class VialManager {
     pour(color, area) {
         var events = [];
         if (area <= 0) return { acceptedArea: 0, events: events, vanishRest: false };
+        var sourceColor = color;
+        if (this.hasDisplayed('rainbow')) color = 'rainbow';
 
         var remainingVials = this.remainingOf(color);
         if (!remainingVials.length) {
@@ -129,7 +135,11 @@ export class VialManager {
             vial.fill += take / this.capacity;
             left -= take;
             accepted += take;
-            events.push({ type: 'fill', vial: vial, amount: take });
+            if (vial.color === 'rainbow') {
+                if (!vial.crumbs) vial.crumbs = [];
+                vial.crumbs.push({ color: sourceColor, amount: take });
+            }
+            events.push({ type: 'fill', vial: vial, amount: take, crumbColor: sourceColor });
             if (vial.fill >= 0.999) {
                 vial.fill = 1;
                 vial.popped = true;
@@ -181,7 +191,8 @@ export class VialManager {
                     id: v.id,
                     color: v.color,
                     fill: v.fill,
-                    remainingOfColor: count
+                    remainingOfColor: count,
+                    crumbs: v.crumbs || []
                 };
             }),
             remaining: this.queue.filter(function (v) { return !v.popped; }).length,
@@ -202,6 +213,7 @@ export class VialManager {
         var colors = Object.keys(counts);
         for (var i = 0; i < colors.length; i++) {
             var color = colors[i];
+            if (color === 'rainbow' || color === 'tape') continue;
             var requiredWithMargin = counts[color] * this.capacity * 1.05;
             if ((areas[color] || 0) < requiredWithMargin) {
                 console.warn(

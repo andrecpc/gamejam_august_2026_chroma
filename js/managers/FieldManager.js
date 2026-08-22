@@ -71,7 +71,28 @@ export class FieldManager {
         this.vialCapacity = this.totalArea * 0.10;
         this._needsDraw = false;
         this._wallsNeedMerge = false;
+        this.xf = null;
         this.draw();
+    }
+
+    toLocal(x, y) {
+        var xf = this.xf;
+        if (!xf) return { x: x, y: y };
+        var dx = x - xf.cx;
+        var dy = y - xf.cy;
+        var c = Math.cos(-xf.angle);
+        var s = Math.sin(-xf.angle);
+        return { x: xf.cx + dx * c - dy * s, y: xf.cy + dx * s + dy * c };
+    }
+
+    toWorld(x, y) {
+        var xf = this.xf;
+        if (!xf) return { x: x, y: y };
+        var dx = x - xf.cx;
+        var dy = y - xf.cy;
+        var c = Math.cos(xf.angle);
+        var s = Math.sin(xf.angle);
+        return { x: xf.cx + dx * c - dy * s, y: xf.cy + dx * s + dy * c };
     }
 
     innerRect() {
@@ -126,40 +147,44 @@ export class FieldManager {
     }
 
     isOnFrame(x, y) {
+        var p = this.toLocal(x, y);
         for (var i = 0; i < this.frame.length; i++) {
-            if (pointInPolygon(x, y, this.frame[i])) return true;
+            if (pointInPolygon(p.x, p.y, this.frame[i])) return true;
         }
         return false;
     }
 
     isClaimed(x, y) {
         if (this.colorAt(x, y)) return false;
+        var p = this.toLocal(x, y);
         for (var i = 0; i < this.claimed.length; i++) {
-            if (pointInPolygon(x, y, this.claimed[i])) return true;
+            if (pointInPolygon(p.x, p.y, this.claimed[i])) return true;
         }
         for (i = 0; i < this.enemyWalls.length; i++) {
-            if (pointInPolygon(x, y, this.enemyWalls[i])) return true;
+            if (pointInPolygon(p.x, p.y, this.enemyWalls[i])) return true;
         }
         return false;
     }
 
     colorAt(x, y) {
+        var p = this.toLocal(x, y);
         for (var i = 0; i < this.colors.length; i++) {
-            if (pointInPolygon(x, y, this.colors[i].points)) return this.colors[i].color;
+            if (pointInPolygon(p.x, p.y, this.colors[i].points)) return this.colors[i].color;
         }
         return null;
     }
 
     isWall(x, y) {
         if (this.colorAt(x, y)) return false;
+        var p = this.toLocal(x, y);
         if (this.isOnFrame(x, y)) return true;
         for (var i = 0; i < this.claimed.length; i++) {
             if (polygonArea(this.claimed[i]) < 80) continue;
-            if (pointInPolygon(x, y, this.claimed[i])) return true;
+            if (pointInPolygon(p.x, p.y, this.claimed[i])) return true;
         }
         for (i = 0; i < this.enemyWalls.length; i++) {
             if (polygonArea(this.enemyWalls[i]) < 80) continue;
-            if (pointInPolygon(x, y, this.enemyWalls[i])) return true;
+            if (pointInPolygon(p.x, p.y, this.enemyWalls[i])) return true;
         }
         return false;
     }
@@ -205,8 +230,9 @@ export class FieldManager {
 
     isUnclaimed(x, y) {
         if (this.isSafe(x, y)) return false;
+        var p = this.toLocal(x, y);
         for (var i = 0; i < this.colors.length; i++) {
-            if (pointInPolygon(x, y, this.colors[i].points)) return true;
+            if (pointInPolygon(p.x, p.y, this.colors[i].points)) return true;
         }
         return false;
     }
@@ -214,7 +240,8 @@ export class FieldManager {
     containsEnemy(poly, enemies) {
         for (var i = 0; i < enemies.length; i++) {
             var e = enemies[i];
-            if (e.active && pointInPolygon(e.x, e.y, poly)) return true;
+            var p = this.toLocal(e.x, e.y);
+            if (e.active && pointInPolygon(p.x, p.y, poly)) return true;
         }
         return false;
     }
@@ -223,7 +250,8 @@ export class FieldManager {
         var out = [];
         for (var i = 0; i < enemies.length; i++) {
             var e = enemies[i];
-            if (e.active && pointInPolygon(e.x, e.y, poly)) out.push(e);
+            var p = this.toLocal(e.x, e.y);
+            if (e.active && pointInPolygon(p.x, p.y, poly)) out.push(e);
         }
         return out;
     }
@@ -551,6 +579,22 @@ export class FieldManager {
         return { claimed: unionClaim, killed: killed };
     }
 
+    carveAndFill(captured, color, idPrefix) {
+        if (!captured || !captured.length) return;
+        this._rebuildColors(captured);
+        var i;
+        for (i = 0; i < captured.length; i++) {
+            if (!captured[i] || captured[i].length < 3) continue;
+            if (polygonArea(captured[i]) < 80) continue;
+            this.colors.push({
+                id: (idPrefix || 'fill') + '_' + i + '_' + (this.timeNow || 0),
+                color: color,
+                points: captured[i]
+            });
+        }
+        this.draw();
+    }
+
     _snapshot() {
         return {
             colors: this.colors.map(function (c) {
@@ -605,13 +649,14 @@ export class FieldManager {
 
     stealColorAt(x, y, radius) {
         if (!this.colorAt(x, y)) return 0;
+        var p = this.toLocal(x, y);
         var circle = [];
         var steps = 20;
         for (var i = 0; i < steps; i++) {
             var angle = Math.PI * 2 * i / steps;
             circle.push({
-                x: x + Math.cos(angle) * radius,
-                y: y + Math.sin(angle) * radius
+                x: p.x + Math.cos(angle) * radius,
+                y: p.y + Math.sin(angle) * radius
             });
         }
         var lost = this._stealPolys(

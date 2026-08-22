@@ -48,13 +48,16 @@
             this.load.image('paper-desk', 'assets/paper/desk.png?v=1.7.2');
             this.load.image('paper-kraft', 'assets/paper/kraft.png?v=1.7.1');
             this.load.image('paper-fiber', 'assets/paper/pulp.png?v=1.7.18');
-            this.load.json('levels', 'levels/levels.json?v=1.7.30');
+            this.load.json('levels', 'levels/levels.json?v=1.7.31');
 
             // Заглушка: имитируем короткую загрузку, чтобы бар не мигал
             this._fakeProgress = 0;
         },
 
         create: function () {
+            if (window.SecretPack && SecretPack.mergeInto) {
+                SecretPack.mergeInto(this.cache.json.get('levels'));
+            }
             if (window.Paper) Paper.generate(this);
             var W = this.scale.width;
             var H = this.scale.height;

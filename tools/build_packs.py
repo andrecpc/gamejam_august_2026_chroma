@@ -1382,7 +1382,7 @@ def main() -> None:
     if not lab_src:
         lab_src = [
             level for level in raw_levels
-            if level.get("pack") not in ("training", "campaign")
+            if level.get("pack") not in ("training", "campaign", "secret")
         ]
 
     lab = []

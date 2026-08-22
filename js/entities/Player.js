@@ -135,6 +135,8 @@ export class Player {
         this.y = y;
         this.lastSafeX = x;
         this.lastSafeY = y;
+        this.lastSafeLocalX = x;
+        this.lastSafeLocalY = y;
         this.radius = 11;
         this.hitR = 17;
         this.baseSpeed = (cfg && cfg.playerSpeed) || 210;
@@ -251,8 +253,34 @@ export class Player {
         this.drawing = false;
         this.flameIndex = -1;
         this.magnetState = null;
+        var loc = this._localPoint(this.scene && this.scene.field, this.x, this.y);
+        this.lastSafeLocalX = loc.x;
+        this.lastSafeLocalY = loc.y;
         this._sync();
         this.trailGfx.clear();
+    }
+
+    _localPoint(field, x, y) {
+        if (field && field.toLocal) return field.toLocal(x, y);
+        return { x: x, y: y };
+    }
+
+    _markSafe(field, x, y) {
+        this.lastSafeX = x;
+        this.lastSafeY = y;
+        var loc = this._localPoint(field, x, y);
+        this.lastSafeLocalX = loc.x;
+        this.lastSafeLocalY = loc.y;
+    }
+
+    _trailWorld(field) {
+        if (!field || !field.xf) return this.trail;
+        var out = [];
+        var i;
+        for (i = 0; i < this.trail.length; i++) {
+            out.push(field.toWorld(this.trail[i].x, this.trail[i].y));
+        }
+        return out;
     }
 
     update(dt, dir, field, magnets) {
@@ -303,16 +331,26 @@ export class Player {
         }
 
         if (!dir || (dir.x === 0 && dir.y === 0)) {
+            var idleEv = this._tickSpinField(field);
             this._tickFlame(dt);
             this._sync();
             this._drawTrail();
-            return;
+            return idleEv;
         }
         var nx = this.x + dir.x * this.speed * dt;
         var ny = this.y + dir.y * this.speed * dt;
         var b = field.bounds;
-        nx = Phaser.Math.Clamp(nx, b.x + 4, b.x + b.w - 4);
-        ny = Phaser.Math.Clamp(ny, b.y + 4, b.y + b.h - 4);
+        if (field.xf) {
+            var locN = field.toLocal(nx, ny);
+            locN.x = Phaser.Math.Clamp(locN.x, b.x + 4, b.x + b.w - 4);
+            locN.y = Phaser.Math.Clamp(locN.y, b.y + 4, b.y + b.h - 4);
+            var worldN = field.toWorld(locN.x, locN.y);
+            nx = worldN.x;
+            ny = worldN.y;
+        } else {
+            nx = Phaser.Math.Clamp(nx, b.x + 4, b.x + b.w - 4);
+            ny = Phaser.Math.Clamp(ny, b.y + 4, b.y + b.h - 4);
+        }
 
         if (magnets && magnets.tryAttach(this, nx, ny, dir)) {
             // Если точка приехала с внешней стены, хвост не обрывается:
@@ -334,41 +372,70 @@ export class Player {
         this.x = nx;
         this.y = ny;
 
+        var here = this._localPoint(field, this.x, this.y);
         if (wasSafe && !nowSafe) {
             this.drawing = true;
-            this.trail = [{ x: this.lastSafeX, y: this.lastSafeY }, { x: this.x, y: this.y }];
+            this.trail = [
+                { x: this.lastSafeLocalX, y: this.lastSafeLocalY },
+                { x: here.x, y: here.y }
+            ];
         } else if (this.drawing && nowSafe) {
-            this.trail.push({ x: this.x, y: this.y });
+            this.trail.push({ x: here.x, y: here.y });
             if (polylineLength(this.trail) < 18) {
                 this.trail = [];
                 this.drawing = false;
                 this.flameIndex = -1;
-                this.lastSafeX = this.x;
-                this.lastSafeY = this.y;
+                this._markSafe(field, this.x, this.y);
             } else {
                 var closed = this.trail.slice();
                 this.trail = [];
                 this.drawing = false;
                 this.flameIndex = -1;
-                this.lastSafeX = this.x;
-                this.lastSafeY = this.y;
+                this._markSafe(field, this.x, this.y);
                 this._sync();
                 this._drawTrail();
                 return { close: closed };
             }
         } else if (this.drawing) {
-            this._appendTrailPoint(this.x, this.y);
+            this._appendTrailPoint(here.x, here.y);
             if (trailHitsSelf(this.trail)) {
                 return { hitSelf: true };
             }
         } else if (nowSafe) {
-            this.lastSafeX = this.x;
-            this.lastSafeY = this.y;
+            this._markSafe(field, this.x, this.y);
         }
 
         this._tickFlame(dt);
         this._sync();
         this._drawTrail();
+        return null;
+    }
+
+    _tickSpinField(field) {
+        if (!field || !field.xf) return null;
+        var loc = this._localPoint(field, this.x, this.y);
+        var nowSafe = field.isWall(this.x, this.y);
+        var inColor = !!field.colorAt(this.x, this.y);
+        if (this.drawing) {
+            this._appendTrailPoint(loc.x, loc.y);
+            if (nowSafe && polylineLength(this.trail) >= 18) {
+                var closed = this.trail.slice();
+                this.trail = [];
+                this.drawing = false;
+                this.flameIndex = -1;
+                this._markSafe(field, this.x, this.y);
+                return { close: closed };
+            }
+            if (trailHitsSelf(this.trail)) return { hitSelf: true };
+        } else if (inColor && !nowSafe) {
+            this.drawing = true;
+            this.trail = [
+                { x: this.lastSafeLocalX, y: this.lastSafeLocalY },
+                { x: loc.x, y: loc.y }
+            ];
+        } else if (nowSafe) {
+            this._markSafe(field, this.x, this.y);
+        }
         return null;
     }
 
@@ -464,10 +531,11 @@ export class Player {
         g.clear();
         var rainbow = this.skin && this.skin.rainbow;
         var bands = [0xff3b5c, 0xff8a3d, 0xffd24a, 0x3ee6a0, 0x4a9fff, 0xb07cff];
-        if (this.trail.length >= 2) {
-            strokeDashedPolyline(g, this.trail, 16, 10, 9, 0x1a120c, 0.7);
-            strokeDashedPolyline(g, this.trail, 16, 10, 6, 0xffffff, 1);
-            this._drawTrailCrumbs(g);
+        var pts = this._trailWorld(this.scene && this.scene.field);
+        if (pts.length >= 2) {
+            strokeDashedPolyline(g, pts, 16, 10, 9, 0x1a120c, 0.7);
+            strokeDashedPolyline(g, pts, 16, 10, 6, 0xffffff, 1);
+            this._drawTrailCrumbs(g, pts);
         }
         if (rainbow && this.wake.length >= 2) {
             var w;
@@ -475,11 +543,11 @@ export class Player {
                 strokePolyline(g, this.wake, 14 - w * 1.8, bands[w], 0.92);
             }
         }
-        if (this.trail.length < 2) return;
+        if (pts.length < 2) return;
 
         if (this.flameIndex >= 0) {
-            var fi = Math.min(this.trail.length - 1, Math.floor(this.flameIndex));
-            var burning = this.trail.slice(fi);
+            var fi = Math.min(pts.length - 1, Math.floor(this.flameIndex));
+            var burning = pts.slice(fi);
             if (burning.length >= 2) {
                 g.lineStyle(7, 0xffaa33, 1);
                 g.beginPath();
@@ -493,8 +561,8 @@ export class Player {
         }
     }
 
-    _drawTrailCrumbs(g) {
-        var pts = this.trail;
+    _drawTrailCrumbs(g, pts) {
+        pts = pts || this.trail;
         var acc = 0;
         var i;
         for (i = 1; i < pts.length; i++) {
