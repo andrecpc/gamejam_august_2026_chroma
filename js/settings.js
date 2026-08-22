@@ -23,6 +23,7 @@
         unlockedPacks: { training: 1, campaign: 0 },
         completedPacks: { training: 0, campaign: 0 },
         campaignUnlocked: false,
+        secretUnlocked: false,
         seenTutorials: [],
         selectedSkin: 'spark'
     };
@@ -126,11 +127,23 @@
             }
             this.save();
         },
+        isSecretUnlocked: function () {
+            return !!state.secretUnlocked;
+        },
+        unlockSecret: function () {
+            state.secretUnlocked = true;
+            if (!state.unlockedPacks) state.unlockedPacks = { training: 1, campaign: 1 };
+            if ((state.unlockedPacks.secret || 0) < 1) {
+                state.unlockedPacks.secret = 1;
+            }
+            this.save();
+        },
         resetProgress: function () {
             state.maxUnlockedLevel = 1;
             state.unlockedPacks = { training: 1, campaign: 0 };
             state.completedPacks = { training: 0, campaign: 0 };
             state.campaignUnlocked = false;
+            state.secretUnlocked = false;
             state.seenTutorials = [];
             state.selectedSkin = 'spark';
             this.save();

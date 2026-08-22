@@ -1,11 +1,12 @@
-import { Player } from '../entities/Player.js?v=1.7.18';
-import { FieldManager } from '../managers/FieldManager.js?v=1.7.30';
-import { VialManager } from '../managers/VialManager.js?v=1.7.30';
-import { LevelManager } from '../managers/LevelManager.js?v=1.4.0';
+import { Player } from '../entities/Player.js?v=1.7.31';
+import { FieldManager } from '../managers/FieldManager.js?v=1.7.35';
+import { VialManager } from '../managers/VialManager.js?v=1.7.32';
+import { LevelManager } from '../managers/LevelManager.js?v=1.7.31';
+import { SecretRules } from '../secret/SecretRules.js?v=1.7.40';
+import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.7.35';
 import { MagneticManager } from '../managers/MagneticManager.js';
 import { BoosterManager } from '../managers/BoosterManager.js?v=1.7.28';
-import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.25';
-import { ObjectiveManager } from '../managers/ObjectiveManager.js?v=1.7.11';
+import { EnemyManager } from '../managers/EnemyManager.js?v=1.7.35';
 import { BossManager } from '../managers/BossManager.js?v=1.7.11';
 import { RewardedAdManager } from '../managers/RewardedAdManager.js?v=1.7.8';
 import { dist, hexToInt, pointHitsPolyline, polyCentroid } from '../utils/Geometry.js';
@@ -18,7 +19,10 @@ var COLOR_NAMES = {
     purple: 'фиолетовый',
     orange: 'оранжевый',
     cyan: 'голубой',
-    pink: 'розовый'
+    pink: 'розовый',
+    lime: 'лаймовый',
+    rainbow: 'радужный',
+    tape: 'скотч'
 };
 
 export class GameScene extends Phaser.Scene {
@@ -52,6 +56,7 @@ export class GameScene extends Phaser.Scene {
         this._bossDeathPlaying = false;
         this._cutStreak = 0;
         this._comboHit = false;
+        this.secret = null;
     }
 
     create() {
@@ -65,6 +70,7 @@ export class GameScene extends Phaser.Scene {
         }
         this.lives = this.level.lives;
         this.field = new FieldManager(this, this.level);
+        this.secret = SecretRules.attach(this);
         this.vials = new VialManager(this.level, this.field.vialCapacity);
         this.magnets = new MagneticManager(this, this.level);
         this.objectives = new ObjectiveManager(
@@ -150,6 +156,7 @@ export class GameScene extends Phaser.Scene {
         if (this.scene.isActive('UI') || this.scene.isSleeping('UI')) {
             this.scene.stop('UI');
         }
+        if (this.secret) { this.secret.destroy(); this.secret = null; }
         if (this.field) { this.field.destroy(); this.field = null; }
         if (this.magnets) { this.magnets.destroy(); this.magnets = null; }
         if (this.boosters) { this.boosters.destroy(); this.boosters = null; }
@@ -309,6 +316,7 @@ export class GameScene extends Phaser.Scene {
             this._resetStick();
         }
         var dts = Math.min(dt, 50) / 1000;
+        if (this.secret) this.secret.update(dts);
         if (this.dir && (this.dir.x || this.dir.y)) this._hasMoved = true;
         var timedResult = this.objectives ? this.objectives.update() : null;
         if (this._handleObjectiveResult(timedResult)) return;
@@ -455,6 +463,7 @@ export class GameScene extends Phaser.Scene {
             this._failCut(cut.reason);
             return;
         }
+        if (this.secret && this.secret.handleCut(cut)) return;
 
         var acceptedByColor = {};
         var anyAccept = false;
@@ -1094,7 +1103,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     _updateTutorialDismiss() {
-        if (this.packId !== 'training') return;
+        if (this.packId !== 'training' && this.packId !== 'secret') return;
         if (!this._tutorialMoveSent && (this.dir.x || this.dir.y)) {
             this._tutorialMoveSent = true;
             this.game.events.emit('game:tutorial-dismiss', { reason: 'move' });
@@ -1167,7 +1176,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     _fireTutorials(trigger) {
-        if (this.packId !== 'training' || !this.level || !this.level.tutorials) {
+        if ((this.packId !== 'training' && this.packId !== 'secret') ||
+            !this.level || !this.level.tutorials) {
             return;
         }
         var items = this.level.tutorials;
@@ -1398,6 +1408,11 @@ export class GameScene extends Phaser.Scene {
             }
             if (ok) { x = tx; break; }
         }
+        if (this.field.xf) {
+            var world = this.field.toWorld(x, y);
+            x = world.x;
+            y = world.y;
+        }
         this.player.x = x;
         this.player.y = y;
         this.player.lastSafeX = x;
@@ -1471,6 +1486,7 @@ export class GameScene extends Phaser.Scene {
             }
         }
         if (this._isCampaignComplete()) {
+            if (GameSettings.unlockSecret) GameSettings.unlockSecret();
             if (window.AudioManager && AudioManager.playFinale) AudioManager.playFinale();
             else if (window.AudioManager) AudioManager.playWin();
         } else if (window.AudioManager) {
@@ -1485,7 +1501,8 @@ export class GameScene extends Phaser.Scene {
         if (this._isCampaignComplete()) {
             this._overlay('УРОВЕНЬ ПРОЙДЕН', true, {
                 subtitle: 'Ну вот вы и прошли эту чудо игру. Респект!',
-                finale: true
+                finale: true,
+                secretCta: !!(window.SecretPack && SecretPack.enabled)
             });
         } else if (this._isTrainingComplete()) {
             this._overlay('ОБУЧЕНИЕ ПРОЙДЕНО', true, {
